@@ -13,9 +13,17 @@ class LayerFuser(object):
         self.flag = False
         self.groups = []
     
+    def inference(self, model:nn.Module):
+        """
+        Switch to inference mode
+        """
+        for n, m in model.named_modules():
+            if hasattr(m, "inference"):
+                m.inference()
+
     def layers(self):
         """
-        Fetch layers
+        Fetch layer information from pretrained model
         """
         conv_bn_relu = []
         for n, m in self.model.named_modules():
@@ -38,8 +46,10 @@ class LayerFuser(object):
                 self.flag = False
                 conv_bn_relu = []
 
-    
     def fuse(self):
+        """
+        Fuse conv, bn, and relu layers
+        """
         count = 0
         # initialize the model copy to avoid the mutated dict
         fused_model = copy.deepcopy(self.model) 
@@ -50,6 +60,8 @@ class LayerFuser(object):
                     if isinstance(m, QBaseConv2d):
                         # fetch the module
                         conv_bn_relu = self.groups[count]
+                        bn = conv_bn_relu[1]
+
                         self.flag = True
 
                         # fused layer
@@ -58,8 +70,24 @@ class LayerFuser(object):
 
                         # assign modules
                         setattr(tmp, "conv", conv_bn_relu[0])
-                        setattr(tmp, "bn", conv_bn_relu[1])
+                        # setattr(tmp, "bn", conv_bn_relu[1])
                         setattr(tmp, "relu", conv_bn_relu[2])
+
+                        # quantization scalers
+                        sq = 1 / (tmp.conv.wq.scale.data * tmp.conv.aq.scale.data)
+
+                        # bn scaling
+                        std = torch.sqrt(bn.running_var.data + bn.eps)
+                        sbn = bn.weight.data.mul(sq) / std
+                        # bn bias
+                        bbn = bn.bias - bn.weight.mul(bn.running_mean.data).div(std)
+                        
+                        # scale and bias
+                        tmp.scaler.scale.data = sbn
+                        tmp.scaler.bias.data = bbn
+
+                        # replace batchnorm by the identity
+                        setattr(tmp, "bn", nn.Identity())
 
                         # update module
                         setattr(module, n, tmp)

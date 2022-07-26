@@ -122,6 +122,9 @@ def main():
         fused_model = fuser.fuse()
         print(fused_model)
 
+        # switch to inference mode
+        fuser.inference(fused_model)
+
         # update model
         setattr(trainer, "model", fused_model)
         trainer.valid_epoch()

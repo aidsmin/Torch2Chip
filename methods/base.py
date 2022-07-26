@@ -2,6 +2,7 @@
 Base quantization layers
 """
 
+import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch import Tensor
@@ -67,7 +68,9 @@ class QBaseConv2d(nn.Conv2d):
         Forward pass of quantization-aware training 
         """
         wq = self.wq(self.weight)
+        # print(wq.unique())
         xq = self.aq(input)
+        # print(xq.unique())
         y = F.conv2d(xq, wq, self.bias, self.stride, self.padding, self.dilation, self.groups)
         return y
     
@@ -135,7 +138,21 @@ class QBaseLinear(nn.Linear):
             y = self.evalFunc(input)
         return y
 
+class MulShift(nn.Module):
+    def __init__(self):
+        super(MulShift, self).__init__()
+        self.register_buffer("scale", torch.tensor(1.0))
+        self.register_buffer("bias", torch.tensor(0.0))
+
+    def forward(self, input:Tensor):
+        # import pdb;pdb.set_trace()
+        out = input.mul(self.scale[None, :, None, None]).add(self.bias[None, :, None, None])
+        return out
+
 class ConvBNReLU(nn.Module):
+    """
+    Template of module fusion
+    """
     def __init__(self, in_channels:int, out_channels:int, kernel_size:int, stride:int=1, 
                 padding:int=0, dilation:int=1, groups:int=1, bias:bool=True, wbit:int=32, abit:int=32, train_flag=True):
         super(ConvBNReLU, self).__init__()
@@ -144,9 +161,13 @@ class ConvBNReLU(nn.Module):
         self.conv = QBaseConv2d(in_channels, out_channels, kernel_size, stride, padding, dilation, groups, bias, wbit, abit, train_flag)
         self.bn = nn.BatchNorm2d(out_channels)
         self.relu = nn.ReLU()
+
+        # scaler and shifter
+        self.scaler = MulShift()
     
     def forward(self, input:Tensor):
         x = self.conv(input)
         x = self.bn(x)
+        x = self.scaler(x)
         x = self.relu(x)
         return x

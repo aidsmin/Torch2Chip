@@ -79,10 +79,10 @@ class RCFQuantUQ(torch.autograd.Function):
 
         # quant and de-quant
         input_div = input_c.mul(scale)
-        input_q = input_div.round().div(scale)
-        
+        input_q = input_div.round()
+
         ctx.save_for_backward(input, input_q)
-        input_q = input_q.mul(alpha)
+        input_q = input_q.div(scale).mul(alpha)
         return input_q
     
     @staticmethod    
