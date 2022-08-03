@@ -47,6 +47,9 @@ class QBase(nn.Module):
         else:
             y = self.evalFunc(input)
         return y
+    
+    def extra_repr(self) -> str:
+        return super().extra_repr() + "nbit={}".format(self.nbit)
 
 class QBaseConv2d(nn.Conv2d):
     """
@@ -70,16 +73,28 @@ class QBaseConv2d(nn.Conv2d):
         """
         self.train_flag = False
         self.register_buffer("qweight", torch.ones_like(self.weight))
+        self.register_buffer("fm_max", torch.tensor(0.))
+
+    def get_fm_info(self, y:Tensor):
+        # maximum bit length
+        mb = len(bin(int(y.abs().max().item()))) - 2
+        fm = mb * y.size(2) * y.size(3)
+        
+        # maximum featuremap size
+        if fm > self.fm_max:
+            self.fm_max.data = torch.tensor(fm).float()
 
     def forward(self, input:Tensor):
         wq = self.wq(self.weight)
         
+        xq = self.aq(input)
+        y = F.conv2d(xq, wq, self.bias, self.stride, self.padding, self.dilation, self.groups)
+        
         # save integer weights
         if not self.train_flag:
             self.qweight.data = wq
+            self.get_fm_info(y)
 
-        xq = self.aq(input)
-        y = F.conv2d(xq, wq, self.bias, self.stride, self.padding, self.dilation, self.groups)
         return y
 
 class QBaseLinear(nn.Linear):

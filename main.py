@@ -6,7 +6,7 @@ import logging
 import argparse
 import torch
 import models
-from t2c import LayerFuser, T2C
+from t2c import T2C
 from collections import OrderedDict
 from utils import get_loader, str2bool
 from trainer import BaseTrainer
@@ -116,29 +116,15 @@ def main():
         trainer.valid_epoch()
         print("Test accuracy = {:.3f}".format(trainer.logger_dict["valid_top1"]))
         
-        # post training fusion
-        fuser = LayerFuser(model)
-        fuser.layers()
-        fused_model = fuser.fuse()
-        print(fused_model)
-
-        # switch to inference mode
-        fuser.inference(fused_model)
-
-        # update model
-        setattr(trainer, "model", fused_model)
-        trainer.valid_epoch()
-        print("After fusion Test accuracy = {:.3f}".format(trainer.logger_dict["valid_top1"]))
-
         # T2C
-        nn2c = T2C(model, swl=16, sfl=13)
-        qnn = nn2c.scale_bias2int()
+        nn2c = T2C(model, swl=16, sfl=13, args=args)
+        qnn = nn2c.nn2chip()
 
         # update model
         setattr(trainer, "model", qnn)
         trainer.valid_epoch()
-        print("Integer scaling: Test accuracy = {:.3f}".format(trainer.logger_dict["valid_top1"]))
-
+        print("T2C: Test accuracy = {:.3f}".format(trainer.logger_dict["valid_top1"]))
+        nn2c.get_info(qnn)
         exit()
 
     # start training
