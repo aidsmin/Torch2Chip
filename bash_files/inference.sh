@@ -4,7 +4,7 @@ if [ ! -d "$DIRECTORY" ]; then
     mkdir ../save
 fi
 
-export CUDA_VISIBLE_DEVICES=2
+export CUDA_VISIBLE_DEVICES=3
 
 model=vgg7_Q
 wbit=4

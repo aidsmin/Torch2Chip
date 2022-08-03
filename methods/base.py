@@ -16,6 +16,7 @@ class QBase(nn.Module):
         self.nbit = nbit
         self.train_flag = train_flag
         self.dequantize = True
+        self.qflag = True
     
     def q(self, input:Tensor):
         """
@@ -39,7 +40,7 @@ class QBase(nn.Module):
         """
         self.train_flag = False
         self.dequantize = False
-    
+
     def forward(self, input:Tensor):
         if self.train_flag:
             y = self.trainFunc(input)
@@ -63,35 +64,22 @@ class QBaseConv2d(nn.Conv2d):
         self.wq = nn.Identity()
         self.aq = nn.Identity()
     
-    def trainFunc(self, input):
-        """
-        Forward pass of quantization-aware training 
-        """
-        wq = self.wq(self.weight)
-        # print(wq.unique())
-        xq = self.aq(input)
-        # print(xq.unique())
-        y = F.conv2d(xq, wq, self.bias, self.stride, self.padding, self.dilation, self.groups)
-        return y
-    
-    def evalFunc(self, input):
-        """
-        Forward pass function for evaluation
-        By default, the forward pass of evaluation is equivalent to training
-        """
-        return self.trainFunc(input)
-
     def inference(self):
         """
         Inference mode
         """
         self.train_flag = False
+        self.register_buffer("qweight", torch.ones_like(self.weight))
 
     def forward(self, input:Tensor):
-        if self.train_flag:
-            y = self.trainFunc(input)
-        else:
-            y = self.evalFunc(input)
+        wq = self.wq(self.weight)
+        
+        # save integer weights
+        if not self.train_flag:
+            self.qweight.data = wq
+
+        xq = self.aq(input)
+        y = F.conv2d(xq, wq, self.bias, self.stride, self.padding, self.dilation, self.groups)
         return y
 
 class QBaseLinear(nn.Linear):
@@ -108,22 +96,6 @@ class QBaseLinear(nn.Linear):
         # quantizer
         self.wq = nn.Identity()
         self.aq = nn.Identity()
-
-    def trainFunc(self, input):
-        """
-        Forward pass of quantization-aware training 
-        """
-        wq = self.wq(self.weight)
-        xq = self.aq(input)
-        y = F.linear(xq, wq, self.bias)
-        return y
-    
-    def evalFunc(self, input):
-        """
-        Forward pass function for evaluation
-        By default, the forward pass of evaluation is equivalent to training
-        """
-        return self.trainFunc(input)
     
     def inference(self):
         """
@@ -132,10 +104,9 @@ class QBaseLinear(nn.Linear):
         self.train_flag = False
     
     def forward(self, input:Tensor):
-        if self.train_flag:
-            y = self.trainFunc(input)
-        else:
-            y = self.evalFunc(input)
+        wq = self.wq(self.weight)
+        xq = self.aq(input)
+        y = F.linear(xq, wq, self.bias)
         return y
 
 class MulShift(nn.Module):
@@ -143,10 +114,13 @@ class MulShift(nn.Module):
         super(MulShift, self).__init__()
         self.register_buffer("scale", torch.tensor(1.0))
         self.register_buffer("bias", torch.tensor(0.0))
+        
+        # fractional bit width
+        self.fl = 0.
 
     def forward(self, input:Tensor):
-        # import pdb;pdb.set_trace()
         out = input.mul(self.scale[None, :, None, None]).add(self.bias[None, :, None, None])
+        out = out.mul(2**(-self.fl))
         return out
 
 class ConvBNReLU(nn.Module):

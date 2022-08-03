@@ -87,8 +87,11 @@ class RCF(QBase):
         return out
 
     def evalFunc(self, input: Tensor):
-        input = input.clamp(max=self.alpha.data)
-        input_q = self.q(input)
+        if self.qflag:
+            input = input.clamp(max=self.alpha.data)
+            input_q = self.q(input)
+        else:
+            input_q = input
         return input_q
 
 class QConv2d(QBaseConv2d):

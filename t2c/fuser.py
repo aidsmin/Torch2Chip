@@ -6,12 +6,20 @@ import torch
 import copy
 import torch.nn as nn
 from methods import QBaseConv2d, ConvBNReLU
+from methods.base import QBaseLinear
 
 class LayerFuser(object):
     def __init__(self, model:nn.Module):
         self.model = model
+        # flag
         self.flag = False
+        
+        # layers
         self.groups = []
+        
+        # parameters
+        self.xscales = []
+        self.xbound = []
     
     def inference(self, model:nn.Module):
         """
@@ -30,6 +38,10 @@ class LayerFuser(object):
             if isinstance(m, QBaseConv2d):
                 self.flag = True
                 conv_bn_relu.append(m)
+
+                # scales and boundaries
+                self.xscales.append(m.aq.scale.data)
+                self.xbound.append(m.aq.alpha.data)
                 
                 # print("Name: {}, layer: {}".format(n, m))
             
