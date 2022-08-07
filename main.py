@@ -1,5 +1,5 @@
 """
-CIFAR-VIT training
+DNN training
 """
 import os
 import logging
