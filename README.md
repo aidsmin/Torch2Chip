@@ -1,6 +1,6 @@
 # Torch2Chip: End-to-end Pytorch-based tool for DNN hardware deployment (Beta)
 
-[Jian Meng](https://mengjian0502.github.io/) @ [SeoLab](https://faculty.engineering.asu.edu/jseo/)
+[Jian Meng](https://mengjian0502.github.io/) @ [SeoLab](https://faculty.engineering.asu.edu/jseo/) of Arizona State University
 
 A library of tool for Pytorch-based deep neural network (DNN) compression and the subsequent preparation for hardware deployment. The tool aim to provide the end-to-end solution from compressed DNN training all the way to layer fusion and parameter extraction. Unlike the TF-Lite of Pytorch-Quantization tools, this library supports user-customized quantization methods and allows the post-training integer-only parameter conversion, including integer-only weights and scaling and shifting operations. More details are provided in the following documentation.
 
@@ -232,7 +232,7 @@ Trainer.fit()
 		|_[base_forward]
 ```
 
-**Example Usage:** Four step setup to train a DNN model!
+**Example Usage:** **Four step setup to train a DNN model!**
 
 ```python
 # Step1: Get dataloader
@@ -581,4 +581,131 @@ After fusion:
 ```
 
 The original quantization modules are all replaced by `nn.Identity` and the scaling, rounding process are embedded into the `MulQuant` module. 
+
+------
+
+### T2C: Integer-only parameter conversion and parameter extraction
+
+#### T2C ([source code](https://github.com/mengjian0502/Torch2Chip/blob/94cc93a1ff1524bbcc12087b626ff9f0226729ac/t2c/t2c.py#L14))
+
+Extract the weights and scaling parameters of pre-trained model. The model is fused inside `T2C` by using `LayerFuser` or `XformerFuser`
+
+```python
+class T2C(object):
+    """
+    Deploying the pretrained Pytorch model to hardware-feasible parameters: 
+    - Layer fusion
+    - Integer conversion
+    - Parameter saving
+    - Define the precision of the high precision scaling / shifting
+    Args:
+    - model: Pretrained DNN model (after fusion)
+    - fuser: Model fuser (For CNN or Transformer)
+    - swl: World length of the high precision scaling/shifting factor
+    - swl: Fractional bits the high precision scaling/shifting factor
+    """
+    def __init__(self, model:nn.Module, fuser, swl:int, sfl:int, args):
+        self.swl = swl
+        self.sfl = sfl
+        self.args = args
+       
+    def scale_bias2int(self, model:nn.Module):
+        """
+        Convert the pre-computed scaling factor and bias to high precision integer
+        """
+    
+    def get_info(self, model:nn.Module):
+      	"""
+      	Get model info and the maximum data precision of the intermediate results
+      	"""
+        
+    def nn2chip(self, save_model:bool=False):
+      	"""
+      	Convert and save the model
+      	"""
+```
+
+**Class Parameters:**
+
+- `model`(`nn.Module`): Pre-trained low precision model.
+- `fuser`: Model fuser (Option: `LayerFuser` or `XformerFuser`)
+- `swl` (*int*): Bit width of the high precision scaling and bias.
+- `sfl` *(int)*: Fractional bit width of the high precision scaling and bias.
+- `args`: Global argument, defined in the main file.
+
+**Class Methods:**
+
+- `scale_bias2int`: Convert the floating point scaling factor and bias into high precision fixed point integer. 
+- `get_info`: Get the detailed information of the converted model, including the data precision and model parameters. 
+- `nn2chip`: Convert and save the model
+
+Given a pre-trained low-precision model, `T2C` first fuses the layers then convert the high precision parameters (e.g., scaling factors and bias) in to high precision integer, where the precision is directly specified by the user to justify the tradeoff between the accuracy and data precision. 
+
+**Example Usage:** **3-line code for model fusion, conversion, and inference!**
+
+```python
+# Define T2C
+nn2c = T2C(model, fuser=XformerFuser, swl=args.wl, sfl=args.fl, args=args)
+# Fuse and convert the model
+qnn = nn2c.nn2chip(save_model=True)
+# Update the model of the trainer to perform inference
+setattr(trainer, "model", qnn)
+# Inference
+trainer.valid_epoch()
+```
+
+**Experimental results with CIFAR-10 dataset**
+
+| Model | W/A  |  S/b  | SW Baseline | T2C Acc. |
+| :---: | :--: | :---: | :---------: | :------: |
+| ViT7  | 4/4  | 16/16 |    88.54    |  88.49   |
+| VGG7  | 4/4  | 16/16 |    92.55    |  92.51   |
+
+------
+
+## Notes for Transformer
+
+For the Beta version, the transformer-based implementation is currently available in the `transformer` branch ([link](https://github.com/mengjian0502/Torch2Chip/tree/transformer))
+
+## Usage and Requirements
+
+The training and inference scripts `.sh` are all available in the `bash_files` folder of each branch. Execute the corresponding `.sh` file for training, fine-tuning, and inference. **For each script file, please specify your Python path before running the script.**
+
+**CNN Training**
+
+```bash
+bash qtrain.sh
+```
+
+**CNN Inference**
+
+```sh
+bash inference.sh
+```
+
+**Transformer Training** 
+
+```bash
+bash vit_train.sh
+```
+
+**Transformer Fine-tuning**
+
+```bash
+bash vit_finetune.sh
+```
+
+**Transformer Inference**
+
+```bash
+bash vit_inference.sh
+```
+
+### Requirements
+
+```markdown
+python >= 3.7.4
+pytorch >= 1.9.1
+fxpmath = 0.4.5
+```
 
