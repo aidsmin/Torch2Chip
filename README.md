@@ -274,17 +274,24 @@ Where ${\text{scale}_X^{*}}$​ represents the quantization scaling factor of th
 ### BatchNorm scaling 
 
 During the forward pass of the DNN inference, BatchNorm operation can be formulated as:
+
 $$
 \bar{Y} = \gamma\times \frac{Y-\mu}{\sigma} + \beta
 $$
+
 Where $\gamma$, $\mu$, $\sigma$, and $\beta$ represents the weight, running mean, running standard deviation, and bias of the BatchNorm module (`torch.nn.BatchNorm2d`). Such normalization process can further re-written as: 
+
 $$
 \bar{Y} = \frac{\gamma}{\sigma}Y + (\beta-\frac{\gamma \mu}{\sigma})
 $$
+
 Where ${\gamma}/{\sigma}$ and $(\beta-\frac{\gamma \mu}{\sigma})$ are characterized as the scaling factor and bias values. 
 
 Together with the quantization scaling, the re-formmulated scaling factor $S$ and bias $b$ are :
+
 $$
 S = \frac{\gamma}{\sigma} \frac{\text{scale}_X^{*}}{\text{scale}_X \times \text{scale}_W} \\
 b = (\beta-\frac{\gamma \mu}{\sigma}) \times \text{scale}_X^{*}
 $$
+
+
