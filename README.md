@@ -1,4 +1,7 @@
 # Torch2Chip: End-to-end Pytorch-based tool for DNN hardware deployment (Beta)
+
+[Jian Meng](https://mengjian0502.github.io/) @ [SeoLab](https://faculty.engineering.asu.edu/jseo/)
+
 A library of tool for Pytorch-based deep neural network (DNN) compression and the subsequent preparation for hardware deployment. The tool aim to provide the end-to-end solution from compressed DNN training all the way to layer fusion and parameter extraction. Unlike the TF-Lite of Pytorch-Quantization tools, this library supports user-customized quantization methods and allows the post-training integer-only parameter conversion, including integer-only weights and scaling and shifting operations. More details are provided in the following documentation.
 
 ## Outline
@@ -17,6 +20,8 @@ A library of tool for Pytorch-based deep neural network (DNN) compression and th
   - Fuse the normalization parameters in to scalers and bias
     - MulShift
     - MulQuant
+    - LayerFuser
+    - XFormerFuser
   - T2C: Integer-only parameter conversion and parameter extraction
 - **Notes for transformer**
 - **Usage and requirements**
@@ -301,4 +306,279 @@ $$
 b = (\beta-\frac{\gamma \mu}{\sigma}) \times \text{scale}_X^{*}
 $$
 
+------
+
+### Fuse the normalization parameters in to scalers and bias
+
+Based on the mathematical derivation above, Torch2Chip library implemented the scaling and shifting process based on the following customized modules, which are also closely corporated with the model fusion modules. 
+
+#### MulShift ([source code](https://github.com/mengjian0502/Torch2Chip/blob/3a8766d5f0eecbbf332f637ab7a59e3196f290fa/methods/base.py#L127))
+
+```python
+class MulShift(nn.Module):
+    def __init__(self):
+        super(MulShift, self).__init__()
+        self.register_buffer("scale", torch.tensor(1.0))
+        self.register_buffer("bias", torch.tensor(0.0))
+        
+        # fractional bit width
+        self.fl = 0.
+
+    def forward(self, input:Tensor):
+        out = input.mul(self.scale[None, :, None, None]).add(self.bias[None, :, None, None])
+        out = out.mul(2**(-self.fl))
+        return out
+```
+
+**Class Parameters:**
+
+- `scale`(`torch.Tensor`): Merged scaling factor.
+- `bias`(`torch.Tensor`): Merged bias.
+- `fl`: Shifted fractional bits after the integer operation.
+
+#### MulQuant ([source code](https://github.com/mengjian0502/Torch2Chip/blob/871de10b7e7f9e2c105af05116489804a213ee24/methods/base.py#L160))
+
+Currently, the scaling and output quantization process are available for vision transformer only. The detailed implementation is available in the `transformer` branch ([link](https://github.com/mengjian0502/Torch2Chip/tree/transformer)). 
+
+```python
+class MulQuant(nn.Module):
+    def __init__(self, nbit:int=4):
+        super(MulQuant, self).__init__()
+        self.register_buffer("scale", torch.tensor(1.0))
+        self.register_buffer("bias", torch.tensor(0.0))
+        self.nbit = nbit
+        self.nlv = 2**(nbit-1) - 1
+
+        # fractional bit width
+        self.fl = 0.
+
+    def forward(self, input:Tensor):
+        out = input.mul(self.scale)
+        out = out.mul(2**(-self.fl)).round()
+
+        out = out.clamp(min=-self.nlv, max=self.nlv)
+        return out
+```
+
+Similar to `MulShift`, `MulQuant` module first applies the scaling and shifting to the input tensor (resultant of linear or convolution operation), then rounds the scaled value to the nearest integer, followed by the clamping operation to clip the value range. 
+
+**Class Parameters:**
+
+- `scale`(`torch.Tensor`): Merged scaling factor.
+- `bias`(`torch.Tensor`): Merged bias.
+- `fl`: (*int*) Shifted fractional bits after the integer operation.
+- `nbit`:(*int*) Input precision of the subsequent layer.
+
+#### LayerFuser ([source code](https://github.com/mengjian0502/Torch2Chip/blob/3a8766d5f0eecbbf332f637ab7a59e3196f290fa/t2c/fuser.py#L11))
+
+Fuse the Conv-BN-ReLU layers altogether, then return a newly-constructed fused model:
+
+```python
+class LayerFuser(object):
+    def __init__(self, model:nn.Module):
+        self.model = model
+        # flag
+        self.flag = False
+        
+        # layers
+        self.groups = []
+
+    def inference(self, model:nn.Module):
+        """
+        Switch to inference mode
+        """
+
+    def layers(self):
+        """
+        Fetch layer information from pretrained model
+        """
+       
+    def fuse(self):
+        """
+        Fuse conv, bn, and relu layers
+        """
+```
+
+**Class Parameters:**
+
+- `model`(`nn.Module`): Pre-trained low precision model
+- `flag` (*bool*): Flag of merging
+- `groups` (*List*): Groups of Conv-BN-ReLU layer
+
+**Class Methods:**
+
+- `inference`: Switch the model (including sub-modules) to inference mode
+- `layers`: Fetch layer information and Conv-BN-ReLU groups
+- `fuse`: Model fusion
+
+**Example Usage:**
+
+Before fusion (Pretrained model):
+
+```python
+(3): QConv2d(
+      128, 128, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), bias=False
+      (wq): SAWB(nbit=4)
+      (aq): RCF(nbit=4)
+    )
+(4): BatchNorm2d(128, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+(5): ReLU(inplace=True)
+```
+
+After layer fusion:
+
+```python
+(3): ConvBNReLU(
+      (conv): QConv2d(
+        128, 128, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), bias=False
+        (wq): SAWB(nbit=4)
+        (aq): RCF(nbit=4)
+      )
+      (bn): Identity()
+      (relu): ReLU(inplace=True)
+      (scaler): MulShift()
+    )
+(4): Identity()
+(5): Identity()
+```
+
+The original `BatchNorm2d` and `ReLU` modules are replaced by `nn.Identity()` modules. The post-convolution scaling are performed by the `MulShift` module. 
+
+#### XformerFuser ([source code](https://github.com/mengjian0502/Torch2Chip/blob/871de10b7e7f9e2c105af05116489804a213ee24/t2c/xformer_fuser.py#L11))
+
+```python
+class XformerFuser(object):
+    """
+    Applies layer fusion for vision transformer (ViT)
+
+    Args:
+    - model: nn.Module, Pre-trained low-precision vision transformer
+    """
+    def __init__(self, model:nn.Module):
+        self.model = model
+    
+    def inference(self, model:nn.Module):
+        """
+        Switch to inference mode
+        """    
+      
+    def fused_linear(self, linear:QBaseLinear, qflag:bool=True, obit:int=32):
+      	"""
+      	Fuse the linear layer and scaling into the fused module
+      	"""
+      	...
+    
+    def encoder_fuser(self):
+      	"""
+      	Fuse the layers of multi head attention
+      	"""
+      	...
+    
+    def mlp_fuser(self, model:nn.Module):
+      	"""
+      	Fuse the multi-layer perceptron
+      	"""
+        ...
+
+    def fuse(self):
+      	"""
+      	Fuse the entire transformer
+      	"""
+        ...
+```
+
+**Class Parameters:**
+
+- `model`(`nn.Module`): Pre-trained low precision model
+
+**Class Methods:**
+
+- `inference`: Switch the model (including sub-modules) to inference mode
+- `fused_linear`: Fuse the linear layer and scaling module into `LinearMulShift`([code](https://github.com/mengjian0502/Torch2Chip/blob/871de10b7e7f9e2c105af05116489804a213ee24/methods/base.py#L201)) or `LinearMulShiftReLU`([code](https://github.com/mengjian0502/Torch2Chip/blob/871de10b7e7f9e2c105af05116489804a213ee24/methods/base.py#L219)) 
+- `encoder_fuser`: Fuse the multi-head-attention block
+- `mlp_fuser`: Fuse the multi-layer perceptron
+
+**Example Usage:**
+
+Before fusion (Pretrained model):
+
+```python
+(msa): MultiHeadSelfAttention(
+      (qq): RCFSQ(nbit=4)
+      (kq): RCFSQ(nbit=4)
+      (vq): RCFSQ(nbit=4)
+      (oq): RCFSQ(nbit=4)
+      (q): QLinear(
+        in_features=384, out_features=384, bias=True
+        (wq): SAWB(nbit=4)
+        (aq): Identity()
+      )
+      (k): QLinear(
+        in_features=384, out_features=384, bias=True
+        (wq): SAWB(nbit=4)
+        (aq): Identity()
+      )
+      (v): QLinear(
+        in_features=384, out_features=384, bias=True
+        (wq): SAWB(nbit=4)
+        (aq): Identity()
+      )
+      (o): QLinear(
+        in_features=384, out_features=384, bias=True
+        (wq): SAWB(nbit=4)
+        (aq): Identity()
+      )
+      (dropout): Dropout(p=0.0, inplace=False)
+      (deq): MulShift()
+      (vdeq): MulShift()
+    )
+```
+
+After fusion:
+
+```python
+(msa): MultiHeadSelfAttention(
+        (qq): Identity()
+        (kq): Identity()
+        (vq): Identity()
+        (oq): Identity()
+        (q): LinearMulShift(
+          (linear): QLinear(
+            in_features=384, out_features=384, bias=True
+            (wq): SAWB(nbit=4)
+            (aq): Identity()
+          )
+          (scaler): MulQuant()
+        )
+        (k): LinearMulShift(
+          (linear): QLinear(
+            in_features=384, out_features=384, bias=True
+            (wq): SAWB(nbit=4)
+            (aq): Identity()
+          )
+          (scaler): MulQuant()
+        )
+        (v): LinearMulShift(
+          (linear): QLinear(
+            in_features=384, out_features=384, bias=True
+            (wq): SAWB(nbit=4)
+            (aq): Identity()
+          )
+          (scaler): MulQuant()
+        )
+        (o): LinearMulShift(
+          (linear): QLinear(
+            in_features=384, out_features=384, bias=True
+            (wq): SAWB(nbit=4)
+            (aq): Identity()
+          )
+          (scaler): MulShift()
+        )
+        (dropout): Dropout(p=0.0, inplace=False)
+        (deq): MulShift()
+        (vdeq): MulQuant()
+      )
+```
+
+The original quantization modules are all replaced by `nn.Identity` and the scaling, rounding process are embedded into the `MulQuant` module. 
 
