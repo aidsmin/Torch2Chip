@@ -6,7 +6,7 @@ A library of tool for Pytorch-based deep neural network (DNN) compression and th
 
 ## Outline
 
-- **Layers**
+- **[Layers](https://github.com/mengjian0502/Torch2Chip/tree/main#layers)**
   - [Customized quantization method](https://github.com/mengjian0502/Torch2Chip/tree/main#layers)
     - [QBase](https://github.com/mengjian0502/Torch2Chip/tree/main#qbase-source-code)
   - [Customized quantization layer](https://github.com/mengjian0502/Torch2Chip/tree/main#customized-quantization-layers)
