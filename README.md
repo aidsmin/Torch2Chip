@@ -258,15 +258,19 @@ trainer.fit()
 To maintain the same data range, the quantized integers have to be re-scaled back by a pre-computed scaling factor S. As demonstrated in `QBase`, the scaling factor is computed and updated during the entire training process and saved as a non-learable parameter of the model `scale`. Due to the property of convolution and weight multiplication, the scaling processs can be performed after the integer-only computation. 
 
 Given the quantized weights $W_Q$ and quantized input $X_Q$, the forward pass of the inference is formulated as
+
 $$
 Y = \frac{1}{\text{scale}_X \times \text{scale}_W}(X_Q * W_Q)
 $$
+
 Where $\text{scale}_X$ and $\text{scale}_W$ are the scaling factors of the activation and weight quantizers, parametrized as the `scale` variable and embedded into the `state_dict` of the pre-trained model. 
 
 On top of the scaling process of the current layer, the quantization (**not dequantization**) process of the subsequent layer should be collectively merged. In hardware, the quantization process is performed as 1) Scaling, 2) Rounding, 3) Clamping. Without considering BatchNorm, the scaling process can be merged into the above scaling process: 
+
 $$
 S = \frac{\text{scale}_X^{*}}{\text{scale}_X \times \text{scale}_W}
 $$
+
 Where ${\text{scale}_X^{*}}$​ represents the quantization scaling factor of the next layer. 
 
 ------
@@ -290,7 +294,10 @@ Where ${\gamma}/{\sigma}$ and $(\beta-\frac{\gamma \mu}{\sigma})$ are characteri
 Together with the quantization scaling, the re-formmulated scaling factor $S$ and bias $b$ are :
 
 $$
-S = \frac{\gamma}{\sigma} \frac{\text{scale}_X^{*}}{\text{scale}_X \times \text{scale}_W} \\
+S = \frac{\gamma}{\sigma} \frac{\text{scale}_X^{*}}{\text{scale}_X \times \text{scale}_W}
+$$
+
+$$
 b = (\beta-\frac{\gamma \mu}{\sigma}) \times \text{scale}_X^{*}
 $$
 
