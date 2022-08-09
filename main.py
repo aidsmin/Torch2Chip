@@ -125,6 +125,13 @@ def main():
         trainer.valid_epoch()
         print("T2C: Test accuracy = {:.3f}".format(trainer.logger_dict["valid_top1"]))
         nn2c.get_info(qnn)
+
+        # save model
+        state = qnn.state_dict()
+        filename = "t2c_model.pth.tar"
+        path = os.path.join(args.save_path, filename)
+        torch.save(state, path)
+
         exit()
 
     # start training
