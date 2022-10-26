@@ -7,7 +7,7 @@ import torch
 import copy
 import torch.nn as nn
 from torch import Tensor
-from methods import MulShift
+from methods import MulShift, CPUQBaseConv2d, QBaseConv2d, ConvBNReLU
 from .fuser import LayerFuser
 from fxpmath import Fxp
 
@@ -80,7 +80,20 @@ class T2C(object):
 
     def nn2chip(self):
         return self.model
-            
-            
+    
+    def nn2cpu(self, fused_nn:nn.Module):
+        cpu_nn = copy.deepcopy(fused_nn)
+        for n, m in cpu_nn.named_modules():
+            if isinstance(m, ConvBNReLU):
+                conv = m.conv
+                qconv = CPUQBaseConv2d(conv.in_channels, conv.out_channels, conv.kernel_size, conv.stride, conv.padding, 
+                                        wbit=conv.wbit, abit=conv.abit, train_flag=conv.train_flag)
+                setattr(qconv, "aq", conv.aq)
+                setattr(qconv, "wq", conv.wq)
+                
+                # insert the integer weight
+                qconv.qint8(conv.qweight)
 
-
+                # update conv module
+                setattr(m, "conv", qconv)
+        return cpu_nn

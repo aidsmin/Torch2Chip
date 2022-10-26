@@ -124,6 +124,43 @@ class QBaseLinear(nn.Linear):
         y = F.linear(xq, wq, self.bias)
         return y
 
+class CPUQBaseConv2d(QBaseConv2d):
+    """
+    Low precision layer for CPU-based acceleration
+    """
+    def __init__(self, in_channels: int, out_channels: int, kernel_size: int, stride: int = 1, padding: int = 0, dilation: int = 1, groups: int = 1, bias: bool = True, wbit: int = 32, abit: int = 32, train_flag=True):
+        super(CPUQBaseConv2d, self).__init__(in_channels, out_channels, kernel_size, stride, padding, dilation, groups, bias, wbit, abit, train_flag)
+        
+        # Define the quantized layer for cpu
+        self.qlayer = torch.nn.quantized.Conv2d(self.in_channels, self.out_channels, self.kernel_size, bias=False, 
+                            stride=self.stride, padding=self.padding, dilation=self.dilation, groups=self.groups, dtype=torch.qint32)
+
+    def quint8(self, input:Tensor):
+        r"""
+        Convert low precision input integer to quint8 data format
+        """
+        return torch.quantize_per_tensor(input.cpu(), scale=1.0, zero_point=0, dtype=torch.quint8)
+    
+    def qint8(self, weight:Tensor):
+        r"""
+        Convert the low precision weight to qint8 data format
+        """
+        self.qweight = torch.quantize_per_tensor(weight.cpu(), scale=1.0, zero_point=0, dtype=torch.qint8)
+        self.b = torch.zeros(self.out_channels)
+    
+        
+    def forward(self, input:Tensor):
+        xq = self.aq(input)
+        qinput = self.quint8(xq)
+
+        y = torch.nn.quantized.functional.conv2d(qinput, self.qweight, self.b, stride=self.stride, padding=self.padding, scale=1.0, zero_point=0, dtype=torch.qint32)
+        # y = self.qlayer(qinput)
+        y = torch.dequantize(y)
+        print(y.unique())
+    
+        return y
+
+
 class MulShift(nn.Module):
     def __init__(self):
         super(MulShift, self).__init__()
