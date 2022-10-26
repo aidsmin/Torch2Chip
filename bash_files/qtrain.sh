@@ -1,10 +1,10 @@
-PYTHON="/home/jmeng15/anaconda3/bin/python"
+PYTHON="/home/mengjian/anaconda3/envs/myenv/bin/python"
 
 if [ ! -d "$DIRECTORY" ]; then
     mkdir ../save
 fi
 
-export CUDA_VISIBLE_DEVICES=1
+export CUDA_VISIBLE_DEVICES=0
 
 model=vgg7_Q
 wbit=4
@@ -16,7 +16,7 @@ loss=cross_entropy
 weight_decay=1e-5
 
 dataset="cifar10"
-save_path="../save/${dataset}/${model}/${model}_w${wbit}_a${abit}_lr${lr}_batch${batch_size}_${loss}loss/"
+save_path="../save/${dataset}/${model}/${model}_w${wbit}_a${abit}_lr${lr}_batch${batch_size}_${loss}loss_fullyq/"
 log_file="training.log"
 
 $PYTHON -W ignore ../main.py \
