@@ -6,7 +6,6 @@ import numpy as np
 import torch
 import copy
 import torch.nn as nn
-from torch import Tensor
 from methods import MulShift, CPUQBaseConv2d, QBaseConv2d, ConvBNReLU
 from .fuser import LayerFuser
 from fxpmath import Fxp
@@ -77,6 +76,7 @@ class T2C(object):
                 fm_size.append(int(v.item()))
         print("Number of weight parameters = {}".format(int(nparams)))
         print("Maximum feature map size = {} bit".format(max(fm_size)))
+        print("Precision of scaling factor and bias: wl = {}, fl = {}".format(self.swl, self.sfl))
 
     def nn2chip(self):
         return self.model

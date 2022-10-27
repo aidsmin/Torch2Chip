@@ -33,4 +33,5 @@ $PYTHON -W ignore ../main.py \
     --optimizer sgd \
     --fine_tune \
     --resume ${pretrained_model} \
+    --ngpu 1 \
     --evaluate;

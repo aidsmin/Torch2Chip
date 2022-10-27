@@ -20,6 +20,12 @@ class LayerFuser(object):
         # parameters
         self.xscales = []
         self.xbound = []
+
+        # full precision conv layer
+        self.fpl = 0
+
+        # full precision classifier
+        self.fpc = False
     
     def inference(self, model:nn.Module):
         """
@@ -35,7 +41,10 @@ class LayerFuser(object):
         """
         conv_bn_relu = []
         for n, m in self.model.named_modules():
-            if isinstance(m, QBaseConv2d):
+            if isinstance(m, nn.Conv2d) and not hasattr(m, "wbit"):
+                self.fpl += 1
+            
+            elif isinstance(m, QBaseConv2d):
                 self.flag = True
                 conv_bn_relu.append(m)
 
@@ -57,12 +66,15 @@ class LayerFuser(object):
                 # reset
                 self.flag = False
                 conv_bn_relu = []
+            
+            elif isinstance(m, nn.Linear) and not hasattr(m, "wbit"):
+                self.fpc = True
 
     def fuse(self):
         """
         Fuse conv, bn, and relu layers
         """
-        count = 0
+        l = 0   # layer counter
         # initialize the model copy to avoid the mutated dict
         fused_model = copy.deepcopy(self.model) 
         
@@ -71,14 +83,22 @@ class LayerFuser(object):
                 for n, m in module.named_children():
                     if isinstance(m, QBaseConv2d):
                         # fetch the module
-                        conv_bn_relu = self.groups[count]
+                        conv_bn_relu = self.groups[l]
                         bn = conv_bn_relu[1]
 
                         self.flag = True
 
+                        if l < len(self.xscales)-1:
+                            snxt = self.xscales[l+1]
+                            int_out = True
+                        else:
+                            snxt = 1.0
+                            if self.fpc:
+                                int_out = False
+
                         # fused layer
                         tmp = ConvBNReLU(m.in_channels, m.out_channels, m.kernel_size, m.stride, m.padding, 
-                                        wbit=m.wbit, abit=m.abit, train_flag=m.train_flag)
+                                        wbit=m.wbit, abit=m.abit, train_flag=m.train_flag, int_out=int_out)
 
                         # assign modules
                         setattr(tmp, "conv", conv_bn_relu[0])
@@ -95,17 +115,21 @@ class LayerFuser(object):
                         bbn = bn.bias - bn.weight.mul(bn.running_mean.data).div(std)
                         
                         # scale and bias
-                        tmp.scaler.scale.data = sbn
-                        tmp.scaler.bias.data = bbn
+                        tmp.scaler.scale.data = sbn.mul(snxt)
+                        tmp.scaler.bias.data = bbn.mul(snxt)
 
                         # replace batchnorm by the identity
                         setattr(tmp, "bn", nn.Identity())
+
+                        # replace the activation quantizer by the Identity module
+                        if l > self.fpl-1:
+                            tmp.conv.aq = nn.Identity()
 
                         # update module
                         setattr(module, n, tmp)
                         
                         # increment
-                        count += 1
+                        l += 1
                     elif isinstance(m, nn.BatchNorm2d) and self.flag:
                         tmp = nn.Identity()
                         

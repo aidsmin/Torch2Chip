@@ -2,6 +2,7 @@
 Base quantization layers
 """
 
+from grpc import insecure_channel
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -166,7 +167,7 @@ class MulShift(nn.Module):
         super(MulShift, self).__init__()
         self.register_buffer("scale", torch.tensor(1.0))
         self.register_buffer("bias", torch.tensor(0.0))
-        
+
         # fractional bit width
         self.fl = 0.
 
@@ -175,12 +176,36 @@ class MulShift(nn.Module):
         out = out.mul(2**(-self.fl))
         return out
 
+class MulQuant(nn.Module):
+    def __init__(self, nbit:int=4):
+        super(MulQuant, self).__init__()
+        self.register_buffer("scale", torch.tensor(1.0))
+        self.register_buffer("bias", torch.tensor(0.0))
+        self.nbit = nbit
+        self.nlv = 2**nbit - 1
+
+        # fractional bit width
+        self.fl = 0.
+
+    def forward(self, input:Tensor):
+        out = input.mul(self.scale[None, :, None, None]).add(self.bias[None, :, None, None])
+        
+        # Fused ReLU
+        out = F.relu(out)
+        out = out.mul(2**(-self.fl)).round()
+        
+        # quant
+        out = out.round()
+        out = out.clamp(max=self.nlv)
+        
+        return out
+
 class ConvBNReLU(nn.Module):
     """
     Template of module fusion
     """
     def __init__(self, in_channels:int, out_channels:int, kernel_size:int, stride:int=1, 
-                padding:int=0, dilation:int=1, groups:int=1, bias:bool=True, wbit:int=32, abit:int=32, train_flag=True):
+                padding:int=0, dilation:int=1, groups:int=1, bias:bool=True, wbit:int=32, abit:int=32, train_flag=True, int_out=True):
         super(ConvBNReLU, self).__init__()
         
         # modules
@@ -189,7 +214,10 @@ class ConvBNReLU(nn.Module):
         self.relu = nn.ReLU()
 
         # scaler and shifter
-        self.scaler = MulShift()
+        if int_out:
+            self.scaler = MulQuant(nbit=abit)
+        else:
+            self.scaler = MulShift()
     
     def forward(self, input:Tensor):
         x = self.conv(input)

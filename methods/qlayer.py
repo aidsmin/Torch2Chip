@@ -72,6 +72,7 @@ class RCF(QBase):
 
     def q(self, input:Tensor):
         input_q = input.mul(self.scale.data).round()
+        input_q = input_q.clamp(max=2**self.nbit-1)
 
         if self.dequantize:
             input_q = input_q.div(self.scale)
@@ -88,7 +89,7 @@ class RCF(QBase):
 
     def evalFunc(self, input: Tensor):
         if self.qflag:
-            input = input.clamp(max=self.alpha.data)
+            # input = input.clamp(max=self.alpha.data)
             input_q = self.q(input)
         else:
             input_q = input

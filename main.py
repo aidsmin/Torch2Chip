@@ -120,17 +120,19 @@ def main():
         nn2c = T2C(model, swl=16, sfl=13, args=args)
         qnn = nn2c.nn2chip()
 
+        print(qnn)
+
         # update model
         setattr(trainer, "model", qnn)
         trainer.valid_epoch()
         print("T2C: Test accuracy = {:.3f}".format(trainer.logger_dict["valid_top1"]))
         nn2c.get_info(qnn)
 
-        # save model
-        state = qnn.state_dict()
-        filename = "t2c_model.pth.tar"
-        path = os.path.join(args.save_path, filename)
-        torch.save(state, path)
+        # # save model
+        # state = qnn.state_dict()
+        # filename = "t2c_model.pth.tar"
+        # path = os.path.join(args.save_path, filename)
+        # torch.save(state, path)
 
         exit()
 
