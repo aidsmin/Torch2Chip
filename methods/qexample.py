@@ -2,13 +2,13 @@
 Customized quantization layers and modules
 
 Example method:
-SAWB: Accurate and Efficient 2-bit Quantized Neural Networks
+SAWB-PACT: Accurate and Efficient 2-bit Quantized Neural Networks
 RCF: Additive Power-of-Two Quantization: An Efficient Non-uniform Discretization For Neural Networks
 """
 import torch
 import torch.nn as nn
 from torch import Tensor
-from .q import RCFQuantUQ, STE
+from .q import RCFQuantUQ, STE, PACTUQ
 from .base import QBaseConv2d, QBaseLinear, QBase
 
 class SAWB(QBase):
@@ -33,7 +33,7 @@ class SAWB(QBase):
             n_lv = 2 ** (self.nbit - 1) - 1
             self.alpha.data = 1/self.z[0] * std - self.z[1]/self.z[0] * m
         elif self.qmode == 'asymm':
-            n_lv = (2 ** (self.nbit) - 1)/2
+            n_lv = 2 ** (self.nbit - 1) - 1
             self.alpha.data = 2*m
         else:
             raise NotImplemented
@@ -45,7 +45,7 @@ class SAWB(QBase):
             xq = xq.mul(self.scale).round()
             if len(xq.unique()) > 2**self.nbit:
                 xq = xq.clamp(-2**self.nbit//2, 2**self.nbit//2-1)
-            
+    
             if self.dequantize:
                 xq = xq.div(self.scale)
         else:
@@ -61,18 +61,21 @@ class SAWB(QBase):
         return out
     
     def evalFunc(self, input: Tensor):
-        out = self.q(input)
-        return out
+        xq = input.clamp(-self.alpha.item(), self.alpha.item())
+        xq = xq.mul(self.scale).round()
+        if self.dequantize:
+            xq = xq.div(self.scale)
+        return xq
+        
 
 class RCF(QBase):
-    def __init__(self, nbit: int, train_flag: bool = True, alpha:float=10.0):
+    def __init__(self, nbit: int, train_flag: bool = True, alpha:float=6.0):
         super(RCF, self).__init__(nbit, train_flag)
         self.register_parameter('alpha', nn.Parameter(torch.tensor(alpha)))
         self.register_buffer("scale", torch.tensor(1.0))
 
     def q(self, input:Tensor):
         input_q = input.mul(self.scale.data).round()
-        input_q = input_q.clamp(max=2**self.nbit-1)
 
         if self.dequantize:
             input_q = input_q.div(self.scale)
@@ -89,7 +92,39 @@ class RCF(QBase):
 
     def evalFunc(self, input: Tensor):
         if self.qflag:
-            # input = input.clamp(max=self.alpha.data)
+            input = input.clamp(max=self.alpha.data)
+            input_q = self.q(input)
+        else:
+            input_q = input
+        return input_q
+    
+    def forward(self, input: Tensor):
+        self.train_flag = False
+        return super().forward(input)
+
+class PACT(QBase):
+    def __init__(self, nbit: int, train_flag: bool = True, alpha:float=6.0):
+        super(PACT, self).__init__(nbit, train_flag)
+        self.register_parameter('alpha', nn.Parameter(torch.tensor(alpha)))
+        self.register_buffer("scale", torch.tensor(1.0))
+    
+    def q(self, input:Tensor):
+        input_q = input.mul(self.scale.data).round()
+
+        if self.dequantize:
+            input_q = input_q.div(self.scale)
+        return input_q
+    
+    def trainFunc(self, input: Tensor):
+        nlv = 2**self.nbit - 1
+        self.scale = nlv / self.alpha.data
+        
+        out = PACTUQ.apply(input, self.alpha, self.nbit)
+        return out
+    
+    def evalFunc(self, input: Tensor):
+        if self.qflag:
+            input = input.clamp(max=self.alpha.data)
             input_q = self.q(input)
         else:
             input_q = input
@@ -100,8 +135,9 @@ class QConv2d(QBaseConv2d):
         super(QConv2d, self).__init__(in_channels, out_channels, kernel_size, stride, padding, dilation, groups, bias, wbit, abit, train_flag)
         
         # quantizers
-        self.wq = SAWB(self.wbit, train_flag=True, qmode="symm")
-        self.aq = RCF(self.abit, train_flag=True, alpha=10.0)
+        self.wq = SAWB(self.wbit, train_flag=True, qmode="asymm")
+        # self.aq = RCF(self.abit, train_flag=True, alpha=6.0)
+        self.aq = PACT(self.abit, train_flag=True, alpha=10.0)
 
     def trainFunc(self, input):
         return super().trainFunc(input)

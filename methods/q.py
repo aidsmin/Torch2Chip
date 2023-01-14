@@ -15,7 +15,7 @@ def stats_quant(x, nbit, qmode='symm', dequantize=True):
         n_lv = 2 ** (nbit - 1) - 1
         alpha_w = 1/z[0] * std - z[1]/z[0] * m
     elif qmode == 'asymm':
-        n_lv = (2 ** (nbit) - 1)/2
+        n_lv = 2 ** (nbit - 1) - 1
         alpha_w = 2*m
     else:
         raise NotImplemented
@@ -46,13 +46,15 @@ class STE(torch.autograd.Function):
         grad_input = grad_output.clone()
         return grad_input, None
 
-class RoundUQ(torch.autograd.Function):
+class PACTUQ(torch.autograd.Function):
     @staticmethod
     def forward(ctx, input, alpha, nbit): 
         ctx.save_for_backward(input, alpha)
+        input = input.clamp(max=alpha)
 
         scale = (2**nbit - 1) / alpha
         input_div = input.mul(scale)
+    
         input_q = input_div.round().div(scale)
         return input_q
 

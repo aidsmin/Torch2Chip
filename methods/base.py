@@ -2,7 +2,6 @@
 Base quantization layers
 """
 
-from grpc import insecure_channel
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -87,10 +86,10 @@ class QBaseConv2d(nn.Conv2d):
 
     def forward(self, input:Tensor):
         wq = self.wq(self.weight)
-        
+
         xq = self.aq(input)
         y = F.conv2d(xq, wq, self.bias, self.stride, self.padding, self.dilation, self.groups)
-        
+
         # save integer weights
         if not self.train_flag:
             self.qweight.data = wq
@@ -157,8 +156,6 @@ class CPUQBaseConv2d(QBaseConv2d):
         y = torch.nn.quantized.functional.conv2d(qinput, self.qweight, self.b, stride=self.stride, padding=self.padding, scale=1.0, zero_point=0, dtype=torch.qint32)
         # y = self.qlayer(qinput)
         y = torch.dequantize(y)
-        print(y.unique())
-    
         return y
 
 
@@ -221,7 +218,8 @@ class ConvBNReLU(nn.Module):
     
     def forward(self, input:Tensor):
         x = self.conv(input)
-        x = self.bn(x)
         x = self.scaler(x)
+        x = self.bn(x)
+
         x = self.relu(x)
         return x

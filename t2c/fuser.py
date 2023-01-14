@@ -6,7 +6,6 @@ import torch
 import copy
 import torch.nn as nn
 from methods import QBaseConv2d, ConvBNReLU
-from methods.base import QBaseLinear
 
 class LayerFuser(object):
     def __init__(self, model:nn.Module):
@@ -27,11 +26,11 @@ class LayerFuser(object):
         # full precision classifier
         self.fpc = False
     
-    def inference(self, model:nn.Module):
+    def inference(self):
         """
         Switch to inference mode
         """
-        for n, m in model.named_modules():
+        for n, m in self.model.named_modules():
             if hasattr(m, "inference"):
                 m.inference()
 
@@ -148,3 +147,101 @@ class LayerFuser(object):
                 setattr(fused_model, name, module)
         
         return fused_model
+
+
+class MobileNetFuser(LayerFuser):
+    def __init__(self, model: nn.Module):
+        super(MobileNetFuser, self).__init__(model)
+    
+    def fuse(self):
+        """
+        Fuse conv, layer, relu for MobileNet architecture
+        """
+        l = 0   # layer counter
+        # initialize the model copy to avoid the mutated dict
+        fused_model = copy.deepcopy(self.model) 
+
+        for name, module in self.model.named_children():
+            if isinstance(module, (nn.AvgPool2d, nn.Linear)):
+                continue
+            else:
+                # layers in the bottom level sequential
+                for n, m in module.named_children():
+                    assert len(m) > 0
+                    seq = []
+                    for layer in m.modules():
+                        if isinstance(layer, nn.Conv2d) and not hasattr(layer, "wbit"):
+                            seq.append(layer)
+
+                        elif isinstance(layer, QBaseConv2d):
+                            # fetch the module
+                            conv_bn_relu = self.groups[l]
+                            bn = conv_bn_relu[1]
+
+                            self.flag = True
+
+                            if l < len(self.xscales)-1:
+                                snxt = self.xscales[l+1]
+                                int_out = True
+                            else:
+                                snxt = 1.0
+                                if self.fpc:
+                                    int_out = False
+
+                            # fused layer
+                            tmp = ConvBNReLU(layer.in_channels, layer.out_channels, layer.kernel_size, layer.stride, layer.padding, 
+                                            wbit=layer.wbit, abit=layer.abit, train_flag=layer.train_flag, int_out=False)
+
+                            # assign modules
+                            setattr(tmp, "conv", conv_bn_relu[0])
+                            setattr(tmp, "bn", conv_bn_relu[1])
+                            setattr(tmp, "relu", conv_bn_relu[2])
+
+                            # # quantization scalers
+                            sq = 1 / (tmp.conv.wq.scale.data * tmp.conv.aq.scale.data)
+
+                            # bn scaling
+                            std = torch.sqrt(bn.running_var.data + bn.eps)
+                            sbn = bn.weight.data.mul(sq) / std
+                            # bn bias
+                            bbn = bn.bias - bn.weight.mul(bn.running_mean.data).div(std)
+                            
+                            # scale and bias
+                            tmp.scaler.scale.data = sbn.mul(snxt)
+                            tmp.scaler.bias.data = bbn.mul(snxt)
+
+                            # replace batchnorm by the identity
+                            setattr(tmp, "bn", nn.Identity())
+
+                            # replace the activation quantizer by the Identity module
+                            if l > self.fpl-1:
+                                tmp.conv.aq = nn.Identity()
+                            
+                            l += 1
+                            seq.append(tmp)
+
+                        elif isinstance(layer, nn.BatchNorm2d):
+                            if l != 0:
+                                tmp = nn.Identity()
+                                seq.append(tmp)
+                            else:
+                                seq.append(layer)
+                        
+                        elif isinstance(layer, nn.ReLU):
+                            if l != 0:
+                                tmp = nn.Identity()
+                                seq.append(tmp)
+                            else:
+                                seq.append(layer)
+                            self.flag = False
+                    
+                    # reconstruct    
+                    seq = nn.Sequential(*seq)
+                    setattr(module, n, seq)
+                setattr(fused_model, name, module)
+    
+        return fused_model
+
+            
+                    
+                    

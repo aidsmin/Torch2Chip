@@ -7,8 +7,15 @@ import torch
 import copy
 import torch.nn as nn
 from methods import MulShift, CPUQBaseConv2d, QBaseConv2d, ConvBNReLU
-from .fuser import LayerFuser
+from .fuser import LayerFuser, MobileNetFuser
 from fxpmath import Fxp
+
+FUSERS = {
+    "vgg7_Q": LayerFuser,
+    "vgg16_Q": LayerFuser,
+    "vgg19_Q": LayerFuser,
+    "mobilenetv1_Q": MobileNetFuser
+}
 
 class T2C(object):
     """
@@ -29,14 +36,22 @@ class T2C(object):
         self.args = args
 
         # model fusion
-        fuser = LayerFuser(model)
+        fuser = FUSERS[str(args.model)](model)
+        
+        # get layer info
         fuser.layers()
+        
+        # fuse layers
         fused_model = fuser.fuse()
-        fuser.inference(fused_model)
+        
+        # switch to inference mode
+        fuser.inference()
+
+        print(fused_model)
 
         # integer conversion
         qnn = self.scale_bias2int(fused_model)
-        self.model = qnn
+        self.model = fused_model
 
         print("\n======== T2C: Torch to chip ========")
 
@@ -74,7 +89,7 @@ class T2C(object):
                 nparams += v.numel()
             elif "fm_max" in n:
                 fm_size.append(int(v.item()))
-        print("Number of weight parameters = {}".format(int(nparams)))
+        print("Number of weight parameters of the encoder = {}".format(int(nparams)))
         print("Maximum feature map size = {} bit".format(max(fm_size)))
         print("Precision of scaling factor and bias: wl = {}, fl = {}".format(self.swl, self.sfl))
 

@@ -73,3 +73,13 @@ class vgg7_Q:
     base = VGG
     args = list()
     kwargs={'depth':7, 'batch_norm':True}
+
+class vgg16_Q:
+    base = VGG
+    args = list()
+    kwargs={'depth':16, 'batch_norm':True}
+
+class vgg19_Q:
+    base = VGG
+    args = list()
+    kwargs={'depth':19, 'batch_norm':True}

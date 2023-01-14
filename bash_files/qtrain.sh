@@ -16,7 +16,7 @@ loss=cross_entropy
 weight_decay=1e-5
 
 dataset="cifar10"
-save_path="../save/${dataset}/${model}/${model}_w${wbit}_a${abit}_lr${lr}_batch${batch_size}_${loss}loss_fullyq/"
+save_path="../save/${dataset}/${model}/${model}_w${wbit}_a${abit}_lr${lr}_batch${batch_size}_${loss}loss_tmp/"
 log_file="training.log"
 
 $PYTHON -W ignore ../main.py \
@@ -29,4 +29,5 @@ $PYTHON -W ignore ../main.py \
     --wbit ${wbit} \
     --abit ${abit} \
     --dataset ${dataset} \
+    --ngpu 1 \
     --optimizer sgd \
