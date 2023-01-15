@@ -7,8 +7,8 @@ fi
 export CUDA_VISIBLE_DEVICES=0
 
 model=mobilenetv1_Q
-wbit=8
-abit=8
+wbit=4
+abit=4
 epochs=200
 batch_size=128
 lr=0.01
