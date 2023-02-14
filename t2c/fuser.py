@@ -6,6 +6,7 @@ import torch
 import copy
 import torch.nn as nn
 from methods import QBaseConv2d, ConvBNReLU
+from typing import List
 
 class LayerFuser(object):
     def __init__(self, model:nn.Module):
@@ -39,6 +40,7 @@ class LayerFuser(object):
         Fetch layer information from pretrained model
         """
         conv_bn_relu = []
+        l = 0
         for n, m in self.model.named_modules():
             if isinstance(m, nn.Conv2d) and not hasattr(m, "wbit"):
                 self.fpl += 1
@@ -50,12 +52,11 @@ class LayerFuser(object):
                 # scales and boundaries
                 self.xscales.append(m.aq.scale.data)
                 self.xbound.append(m.aq.alpha.data)
-                
-                # print("Name: {}, layer: {}".format(n, m))
+                l += 1
             
             elif isinstance(m, nn.BatchNorm2d) and self.flag:
                 conv_bn_relu.append(m)
-                # print("Name: {}, layer: {}".format(n, m))
+                print("Name: {}, layer: {}".format(n, m))
             
             elif isinstance(m, nn.ReLU) and self.flag:
                 conv_bn_relu.append(m)
@@ -68,6 +69,41 @@ class LayerFuser(object):
             
             elif isinstance(m, nn.Linear) and not hasattr(m, "wbit"):
                 self.fpc = True
+
+    def conv_bn_relu(self, cbr:List, l=-1.0, snxt:float=1.0, int_out:bool=False):
+        assert len(cbr) == 3, "The input must include conv, bn, and relu modules"
+        conv, bn, _ = cbr
+
+        # fused layer
+        tmp = ConvBNReLU(conv.in_channels, conv.out_channels, conv.kernel_size, conv.stride, conv.padding, 
+                        wbit=conv.wbit, abit=conv.abit, train_flag=conv.train_flag, int_out=int_out)
+        
+        # assign modules
+        setattr(tmp, "conv", cbr[0])
+        setattr(tmp, "bn", cbr[1])
+        setattr(tmp, "relu", cbr[2])
+
+        # quantization scalers
+        sq = 1 / (tmp.conv.wq.scale.data * tmp.conv.aq.scale.data)
+
+        # bn scaling
+        std = torch.sqrt(bn.running_var.data + bn.eps)
+        sbn = bn.weight.data.mul(sq) / std
+        # bn bias
+        bbn = bn.bias - bn.weight.mul(bn.running_mean.data).div(std)
+        
+        # scale and bias
+        tmp.scaler.scale.data = sbn.mul(snxt)
+        tmp.scaler.bias.data = bbn.mul(snxt)
+
+        # replace batchnorm by the identity
+        setattr(tmp, "bn", nn.Identity())
+
+        # replace the activation quantizer by the Identity module
+        if l > self.fpl-1:
+            tmp.conv.aq = nn.Identity()
+        
+        return tmp
 
     def fuse(self):
         """
@@ -176,8 +212,6 @@ class MobileNetFuser(LayerFuser):
                         elif isinstance(layer, QBaseConv2d):
                             # fetch the module
                             conv_bn_relu = self.groups[l]
-                            bn = conv_bn_relu[1]
-
                             self.flag = True
 
                             if l < len(self.xscales)-1:
@@ -188,34 +222,7 @@ class MobileNetFuser(LayerFuser):
                                 if self.fpc:
                                     int_out = False
 
-                            # fused layer
-                            tmp = ConvBNReLU(layer.in_channels, layer.out_channels, layer.kernel_size, layer.stride, layer.padding, 
-                                            wbit=layer.wbit, abit=layer.abit, train_flag=layer.train_flag, int_out=False)
-
-                            # assign modules
-                            setattr(tmp, "conv", conv_bn_relu[0])
-                            setattr(tmp, "bn", conv_bn_relu[1])
-                            setattr(tmp, "relu", conv_bn_relu[2])
-
-                            # # quantization scalers
-                            sq = 1 / (tmp.conv.wq.scale.data * tmp.conv.aq.scale.data)
-
-                            # bn scaling
-                            std = torch.sqrt(bn.running_var.data + bn.eps)
-                            sbn = bn.weight.data.mul(sq) / std
-                            # bn bias
-                            bbn = bn.bias - bn.weight.mul(bn.running_mean.data).div(std)
-                            
-                            # scale and bias
-                            tmp.scaler.scale.data = sbn.mul(snxt)
-                            tmp.scaler.bias.data = bbn.mul(snxt)
-
-                            # replace batchnorm by the identity
-                            setattr(tmp, "bn", nn.Identity())
-
-                            # replace the activation quantizer by the Identity module
-                            if l > self.fpl-1:
-                                tmp.conv.aq = nn.Identity()
+                            tmp = self.conv_bn_relu(conv_bn_relu, l=l, snxt=snxt, int_out=int_out)
                             
                             l += 1
                             seq.append(tmp)
@@ -243,5 +250,40 @@ class MobileNetFuser(LayerFuser):
         return fused_model
 
             
+class ResNetFuser(LayerFuser):
+    def __init__(self, model: nn.Module):
+        super().__init__(model)
+        
+    def layers(self):
+        pass
+
+    def fuse(self):
+        for name, module in self.model.named_children():
+            if "layer" in name:
+                for basic_block_name, basic_block in module.named_children():
+                    cbr = [basic_block.conv1, basic_block.bn1, basic_block.relu1]
+                    cb = [basic_block.conv2, basic_block.bn2, nn.Identity()]
                     
-                    
+                    # get fused modules
+                    fm1 = self.conv_bn_relu(cbr)
+                    fm2 = self.conv_bn_relu(cb)
+
+                    # update modules
+                    basic_block.conv1 = fm1
+                    basic_block.conv2 = fm2 
+
+                    # disable other modules
+                    basic_block.bn1 = nn.Identity()
+                    basic_block.bn2 = nn.Identity()
+                    basic_block.relu1 = nn.Identity()
+
+                    for sub_block_name, sub_block in basic_block.named_children():
+                        if "shortcut" in sub_block_name:
+                            if len(sub_block) > 0:
+                                cbr = list(sub_block)
+                                cbr.append(nn.Identity())
+                                fsc = self.conv_bn_relu(cbr)
+                                
+                                # update shortcut
+                                setattr(basic_block, sub_block_name, fsc)
+        return self.model

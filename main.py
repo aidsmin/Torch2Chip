@@ -9,12 +9,16 @@ import models
 from t2c import T2C
 from collections import OrderedDict
 from utils import get_loader, str2bool
-from trainer import BaseTrainer
+from trainer import BaseTrainer, PACTTrainer
+import torch.utils.data
+import torchvision.transforms as transforms
+import torchvision.datasets as datasets
 
 parser = argparse.ArgumentParser(description='PyTorch CIFAR10/ImageNet Training')
 parser.add_argument('--model', type=str, help='model architecture')
 parser.add_argument('--lr', default=0.1, type=float, help='learning rate')
 parser.add_argument('--lr_sch', type=str, default='step', help='learning rate scheduler')
+parser.add_argument('--schedule', type=int, nargs='+', default=[60, 120], help='Decrease learning rate at these epochs.')
 parser.add_argument('--momentum', type=float, default=0.9, help='Momentum.')
 parser.add_argument('--epochs', type=int, default=200, help='Number of epochs to train.')
 parser.add_argument('--batch_size', default=128, type=int, metavar='N', help='mini-batch size (default: 64)')
@@ -54,6 +58,9 @@ parser.add_argument('--fine_tune', dest='fine_tune', action='store_true',
                     help='fine tuning from the pre-trained model, force the start epoch be zero')
 parser.add_argument('--resume', default='', type=str, help='path of the pretrained model')
 
+# quant
+parser.add_argument("--mixed_prec", type=str2bool, nargs='?', const=True, default=False, help="enable amp")
+
 args = parser.parse_args()
 
 os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
@@ -77,7 +84,6 @@ def main():
 
     # dataloaders
     trainloader, testloader, num_classes, img_size = get_loader(args)
-    args.num_classes = num_classes
     
     # model
     model_cfg = getattr(models, args.model)
@@ -94,7 +100,7 @@ def main():
         logger.info("=> loading checkpoint...")
         
         for k, v in sdict.items():
-            name = k  
+            name = k
             new_state_dict[name] = v
         
         state_tmp = model.state_dict()
@@ -124,13 +130,13 @@ def main():
         setattr(trainer, "model", qnn)
         trainer.valid_epoch()
         print("T2C: Test accuracy = {:.3f}".format(trainer.logger_dict["valid_top1"]))
-        nn2c.get_info(qnn)
+        # nn2c.get_info(qnn)
 
-        # save model
-        state = qnn.state_dict()
-        filename = "t2c_model.pth.tar"
-        path = os.path.join(args.save_path, filename)
-        torch.save(state, path)
+        # # save model
+        # state = qnn.state_dict()
+        # filename = "t2c_model.pth.tar"
+        # path = os.path.join(args.save_path, filename)
+        # torch.save(state, path)
 
         exit()
 

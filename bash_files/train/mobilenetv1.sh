@@ -7,20 +7,19 @@ fi
 export CUDA_VISIBLE_DEVICES=0
 
 model=mobilenetv1_Q
-wbit=4
-abit=4
+wbit=32
+abit=32
 epochs=200
 batch_size=128
-lr=0.01
+lr=0.05
 loss=cross_entropy
-weight_decay=0.0
+weight_decay=1e-5
 
 dataset="cifar10"
 save_path="../save/${dataset}/${model}/${model}_w${wbit}_a${abit}_lr${lr}_batch${batch_size}_${loss}loss/"
-pretrained_model="../save/cifar10/mobilenetv1_Q/mobilenetv1_Q_w32_a32_lr0.05_batch128_cross_entropyloss/model_best.pth.tar"
 log_file="training.log"
 
-$PYTHON -W ignore ../main.py \
+$PYTHON -W ignore ./main.py \
     --save_path ${save_path} \
     --model ${model} \
     --epochs ${epochs} \
@@ -30,7 +29,5 @@ $PYTHON -W ignore ../main.py \
     --wbit ${wbit} \
     --abit ${abit} \
     --dataset ${dataset} \
-    --resume ${pretrained_model} \
-    --fine_tune \
     --ngpu 1 \
     --optimizer sgd \

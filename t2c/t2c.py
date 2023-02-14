@@ -7,14 +7,15 @@ import torch
 import copy
 import torch.nn as nn
 from methods import MulShift, CPUQBaseConv2d, QBaseConv2d, ConvBNReLU
-from .fuser import LayerFuser, MobileNetFuser
+from .fuser import LayerFuser, MobileNetFuser, ResNetFuser
 from fxpmath import Fxp
 
 FUSERS = {
     "vgg7_Q": LayerFuser,
     "vgg16_Q": LayerFuser,
     "vgg19_Q": LayerFuser,
-    "mobilenetv1_Q": MobileNetFuser
+    "mobilenetv1_Q": MobileNetFuser,
+    "resnet20_Q": ResNetFuser
 }
 
 class T2C(object):

@@ -9,8 +9,8 @@ from torchvision import datasets
 def get_loader(args):
     # Preparing data
     if args.dataset == 'cifar10':
-        mean=[0.491, 0.482, 0.447]
-        std=[0.247, 0.243, 0.262]
+        mean=[0.485, 0.456, 0.406]
+        std=[0.229, 0.224, 0.225]
 
         train_xforms = [transforms.RandomHorizontalFlip(), 
                         transforms.RandomCrop(32, padding=4)]
@@ -27,7 +27,7 @@ def get_loader(args):
         ])
 
         trainset = datasets.CIFAR10(root=args.data_path, train=True, download=True, transform=train_transform)
-        trainloader = torch.utils.data.DataLoader(trainset, batch_size=args.batch_size, shuffle=True, num_workers=2)
+        trainloader = torch.utils.data.DataLoader(trainset, batch_size=args.batch_size, shuffle=True, num_workers=2, pin_memory=True)
 
         testset = datasets.CIFAR10(root=args.data_path, train=False, download=True, transform=test_transform)
         testloader = torch.utils.data.DataLoader(testset, batch_size=args.batch_size, shuffle=False, num_workers=2)

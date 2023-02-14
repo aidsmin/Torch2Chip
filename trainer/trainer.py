@@ -7,8 +7,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import wandb
 import time
-from torch.optim.lr_scheduler import LambdaLR
-from utils.utils import accuracy, AverageMeter, print_table, lr_schedule, convert_secs2time, save_checkpoint
+from utils.utils import accuracy, AverageMeter, print_table, convert_secs2time, save_checkpoint
 
 class BaseTrainer(object):
     def __init__(self,
@@ -38,22 +37,27 @@ class BaseTrainer(object):
             raise NotImplementedError("Unknown loss type")
         
         if args.optimizer == "sgd":
-            self.optimizer = torch.optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum, weight_decay=self.args.weight_decay)
+            self.optimizer = torch.optim.SGD(self.model.parameters(), lr=args.lr, momentum=args.momentum, weight_decay=self.args.weight_decay)
         elif args.optimizer == "adam":
-            self.optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, betas=(self.args.beta1, self.args.beta2), weight_decay=self.args.weight_decay)
+            self.optimizer = torch.optim.Adam(self.model.parameters(), lr=args.lr, betas=(self.args.beta1, self.args.beta2), weight_decay=self.args.weight_decay)
         
         # learning rate scheduler
         if args.lr_sch == "step":
-            self.lr_scheduler = LambdaLR(self.optimizer, lr_lambda=[lr_schedule])
+            self.lr_scheduler = torch.optim.lr_scheduler.MultiStepLR(self.optimizer, milestones=self.args.schedule, last_epoch=-1)
         elif args.lr_sch == "cos":
             self.lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(self.optimizer, T_max=self.args.epochs, eta_min=1e-5)
-
         
+        # cuda
         if args.use_cuda:
-            self.model = model.cuda()
+            self.model = self.model.cuda()
             if args.ngpu > 1:
                 self.model = nn.DataParallel(model)
                 print("Data parallel!")
+        
+        if self.args.mixed_prec:
+            self.scaler = torch.cuda.amp.GradScaler()
+        else:
+            self.scaler = None
 
         # logger
         self.logger = logger
@@ -72,18 +76,29 @@ class BaseTrainer(object):
         out = self.model(inputs)
         loss = self.criterion(out, target)
         return out, loss
+    
+    def amp_forward(self, inputs, target):
+        """Mixed precision forward
+        """
+        with torch.autocast(device_type="cuda", dtype=torch.float16):
+            out = self.model(inputs)
+            loss = self.criterion(out, target)
+        return out, loss
 
     def base_backward(self, loss):
+        """Basic backward pass
+        """
         # zero grad
         self.optimizer.zero_grad()
         loss.backward()
-        for n, p in self.model.named_parameters():
-            if "act_alpha" in n:
-                self.alpha_grad.update(p.grad.item())
-
-        torch.nn.utils.clip_grad_value_(self.model.parameters(), 1)
-
         self.optimizer.step()
+    
+    def amp_backward(self, loss):
+        """Mixed precision backward
+        """
+        self.scaler.scale(loss).backward()
+        self.scaler.step(self.optimizer)
+        self.scaler.update()
     
     def train_step(self, inputs, target):
         """Training step at each iteration
@@ -91,8 +106,12 @@ class BaseTrainer(object):
         if isinstance(self.criterion, nn.MSELoss):
             target = F.one_hot(target, 10).float()
 
-        out, loss = self.base_forward(inputs, target)
-        self.base_backward(loss)
+        if self.scaler is not None:
+            out, loss = self.amp_forward(inputs, target)
+            self.amp_backward(loss)
+        else:
+            out, loss = self.base_forward(inputs, target)
+            self.base_backward(loss)
         
         return out, loss
 
@@ -208,3 +227,26 @@ class BaseTrainer(object):
             epoch_time.avg * (self.args.epochs - epoch))
             print('[Need: {:02d}:{:02d}:{:02d}]'.format(
                 need_hour, need_mins, need_secs))
+
+class PACTTrainer(BaseTrainer):
+    def __init__(self, model: nn.Module, loss_type: str, trainloader, validloader, args, logger):
+        super().__init__(model, loss_type, trainloader, validloader, args, logger)
+        self.penalty = 0.0002
+    
+    def reg(self, loss):
+        reg = 0.
+        for name, param in self.model.named_parameters():
+            if "alpha" in name:
+                reg += param.data.pow(2)
+        loss += reg.mul(self.penalty)
+        return loss
+
+    def base_backward(self, loss):
+        loss = self.reg(loss)
+        return super().base_backward(loss)
+
+    def amp_backward(self, loss):
+        loss = self.reg(loss)
+        return super().amp_backward(loss)
+
+

@@ -20,7 +20,7 @@ save_path="/home/mengjian/Desktop/ASU_research/Torch2Chip/save/cifar10/mobilenet
 pretrained_model="/home/mengjian/Desktop/ASU_research/Torch2Chip/save/cifar10/mobilenetv1_Q/mobilenetv1_Q_w4_a4_lr0.01_batch128_cross_entropyloss/model_best.pth.tar"
 log_file="training.log"
 
-$PYTHON -W ignore ../main.py \
+$PYTHON -W ignore ./main.py \
     --save_path ${save_path} \
     --model ${model} \
     --epochs ${epochs} \
