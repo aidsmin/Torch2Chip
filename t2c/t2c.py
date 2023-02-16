@@ -15,7 +15,8 @@ FUSERS = {
     "vgg16_Q": LayerFuser,
     "vgg19_Q": LayerFuser,
     "mobilenetv1_Q": MobileNetFuser,
-    "resnet20_Q": ResNetFuser
+    "resnet20_Q": ResNetFuser,
+    "resnet18_cifar": ResNetFuser
 }
 
 class T2C(object):

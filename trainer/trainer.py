@@ -96,6 +96,8 @@ class BaseTrainer(object):
     def amp_backward(self, loss):
         """Mixed precision backward
         """
+        self.optimizer.zero_grad()
+        
         self.scaler.scale(loss).backward()
         self.scaler.step(self.optimizer)
         self.scaler.update()
