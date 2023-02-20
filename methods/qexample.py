@@ -5,6 +5,11 @@ Quantization methods
 import torch
 
 def stats_quant(x, nbit, qmode='symm', dequantize=True):
+    r"""Statistic-aware weight bining (SAWB)
+    https://mlsys.org/Conferences/2019/doc/2019/168.pdf
+
+    Compute the quantization boundary based on the stats of the distribution. 
+    """
     z_typical = {'4bit': [0.077, 1.013], '8bit':[0.027, 1.114]}
     z = z_typical[f'{int(nbit)}bit']
 

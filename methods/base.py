@@ -8,8 +8,19 @@ import torch.nn.functional as F
 from torch import Tensor
 
 class QBase(nn.Module):
-    """
-    Basic quantizer module
+    r"""Base quantization method for weight and activation.
+
+    Args:
+    nbit (int): Data precision.
+    train_flag (bool): Training mode. 
+
+    Attribute:
+    dequantize (bool): Flag for dequantization (int -> descritized float).
+
+    Methods:
+    trainFunc (input:Tensor): Training function of quantization-aware training (QAT)
+    evalFunc (input:Tensor): Forward pass function of inference. 
+    inference(): Switch to inference mode. 
     """
     def __init__(self, nbit:int, train_flag:bool=True):
         super(QBase, self).__init__()
@@ -25,18 +36,18 @@ class QBase(nn.Module):
         return input
     
     def trainFunc(self, input:Tensor):
-        """
-        Forward pass of quantization-aware training 
+        r"""Forward pass of quantization-aware training 
         """
         out = self.q(input)
         return out
     
     def evalFunc(self, input:Tensor):
+        r"""Forward pass of inference
+        """
         return self.trainFunc(input)
     
     def inference(self):
-        """
-        Inference mode
+        r"""Inference mode
         """
         self.train_flag = False
         self.dequantize = False
@@ -52,8 +63,15 @@ class QBase(nn.Module):
         return super().extra_repr() + "nbit={}".format(self.nbit)
 
 class QBaseConv2d(nn.Conv2d):
-    """
-    Basic low precision convolutional layer
+    r"""Basic low precision convolutional layer
+
+    Inherited from the base nn.Conv2d layer.
+    
+    Args:
+    wbit (int): Weight quantization precision. 
+    abit (int): Input quantization precision.
+    wq (QBase): Weight quantizer. 
+    aq (QBase): Activation quantizer.
     """
     def __init__(self, in_channels:int, out_channels:int, kernel_size:int, stride:int=1, 
                 padding:int=0, dilation:int=1, groups:int=1, bias:bool=True, wbit:int=32, abit:int=32, train_flag=True):
@@ -69,7 +87,7 @@ class QBaseConv2d(nn.Conv2d):
     
     def inference(self):
         """
-        Inference mode
+        Inference mode.
         """
         self.train_flag = False
         self.register_buffer("qweight", torch.ones_like(self.weight))
@@ -98,8 +116,15 @@ class QBaseConv2d(nn.Conv2d):
         return y
 
 class QBaseLinear(nn.Linear):
-    """
-    Basic low precision linear layer
+    r"""Basic low precision linear layer
+
+    Inherited from the base nn.Linear layer.
+    
+    Args:
+    wbit (int): Weight quantization precision. 
+    abit (int): Input quantization precision.
+    wq (QBase): Weight quantizer. 
+    aq (QBase): Activation quantizer.
     """
     def __init__(self, in_features: int, out_features: int, bias: bool = True, wbit:int=32, abit:int=32, train_flag=True):
         super(QBaseLinear, self).__init__(in_features, out_features, bias)
@@ -160,6 +185,13 @@ class CPUQBaseConv2d(QBaseConv2d):
 
 
 class MulShift(nn.Module):
+    r"""Multiply the scaling factor and add the bias
+    
+    Attributes:
+    scale: Scaling factor with the shape of output channels.
+    bias: Bias value. 
+    fl: Fractional bits of the high-precision integer.
+    """
     def __init__(self):
         super(MulShift, self).__init__()
         self.register_buffer("scale", torch.tensor(1.0))
@@ -174,6 +206,13 @@ class MulShift(nn.Module):
         return out
 
 class MulQuant(nn.Module):
+    r"""Multiply the scaling factor and add the bias, then quantize the output.
+
+    Attributes:
+    scale: Scaling factor with the shape of output channels.
+    bias: Bias value. 
+    fl: Fractional bits of the high-precision integer.
+    """
     def __init__(self, nbit:int=4):
         super(MulQuant, self).__init__()
         self.register_buffer("scale", torch.tensor(1.0))
@@ -198,7 +237,7 @@ class MulQuant(nn.Module):
         return out
 
 class ConvBNReLU(nn.Module):
-    """
+    r"""
     Template of module fusion
     """
     def __init__(self, in_channels:int, out_channels:int, kernel_size:int, stride:int=1, 

@@ -12,6 +12,10 @@ from .qexample import RCFQuantUQ, STE, PACTUQ
 from .base import QBaseConv2d, QBaseLinear, QBase
 
 class SAWB(QBase):
+    r"""Statistic-aware weight bining (SAWB)
+    
+    https://mlsys.org/Conferences/2019/doc/2019/168.pdf
+    """
     def __init__(self, nbit: int, train_flag: bool = True, qmode:str="symm"):
         super(SAWB, self).__init__(nbit, train_flag)
         self.register_buffer("alpha", torch.tensor(1.0))
@@ -103,6 +107,10 @@ class RCF(QBase):
         return super().forward(input)
 
 class PACT(QBase):
+    r"""PACT: Parameterized Clipping Activation for Quantized Neural Networks
+    
+    https://arxiv.org/abs/1805.06085
+    """
     def __init__(self, nbit: int, train_flag: bool = True, alpha:float=6.0):
         super(PACT, self).__init__(nbit, train_flag)
         self.register_parameter('alpha', nn.Parameter(torch.tensor(alpha)))

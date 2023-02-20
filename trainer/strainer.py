@@ -12,6 +12,8 @@ PRUNERS = {
 }
 
 class SparseTrainer(BaseTrainer):
+    r"""Trainer with pruner. 
+    """
     def __init__(self, model: nn.Module, loss_type: str, trainloader, validloader, args, logger):
         super(SparseTrainer, self).__init__(model, loss_type, trainloader, validloader, args, logger)
 
