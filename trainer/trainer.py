@@ -10,6 +10,8 @@ import time
 from utils.utils import accuracy, AverageMeter, print_table, convert_secs2time, save_checkpoint
 
 class BaseTrainer(object):
+    r"""Base deep neural network trainer. 
+    """
     def __init__(self,
         model: nn.Module,
         loss_type: str, 

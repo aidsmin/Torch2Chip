@@ -16,8 +16,8 @@ loss=cross_entropy
 weight_decay=1e-5
 
 dataset="cifar10"
-save_path="/home2/jmeng15/Torch2Chip/save/cifar10/resnet18_cifar/resnet18_cifar_w4_a4_lr0.1_batch128_cross_entropyloss/eval/"
-pretrained_model="/home2/jmeng15/Torch2Chip/save/cifar10/resnet18_cifar/resnet18_cifar_w4_a4_lr0.1_batch128_cross_entropyloss/model_best.pth.tar"
+save_path="/home2/jmeng15/Torch2Chip/save/cifar10/prune/resnet18_cifar/resnet18_cifar_w4_a4_lr0.01_batch128_cross_entropyloss/eval/"
+pretrained_model="/home2/jmeng15/Torch2Chip/save/cifar10/prune/resnet18_cifar/resnet18_cifar_w4_a4_lr0.01_batch128_cross_entropyloss/model_best.pth.tar"
 log_file="training.log"
 
 $PYTHON -W ignore ./main.py \
@@ -34,4 +34,6 @@ $PYTHON -W ignore ./main.py \
     --fine_tune \
     --resume ${pretrained_model} \
     --ngpu 1 \
+    --nchw False \
+    --ltype "nm" \
     --evaluate;

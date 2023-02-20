@@ -5,6 +5,7 @@ import shutil
 import torch
 import tabulate
 import argparse
+from collections import OrderedDict
 
 def str2bool(v):
     if isinstance(v, bool):
@@ -74,8 +75,20 @@ def convert_secs2time(epoch_time):
     need_secs = int(epoch_time - 3600*need_hour - 60*need_mins)
     return need_hour, need_mins, need_secs
 
-
 def save_checkpoint(state, is_best, save_path, filename='checkpoint.pth.tar'):
     torch.save(state, save_path+filename)
     if is_best:
         shutil.copyfile(save_path+filename, save_path+'model_best.pth.tar')
+
+def load_checkpoint(ckpt, state):
+    checkpoint = torch.load(ckpt)
+    sdict = checkpoint['state_dict']
+
+    new_state_dict = OrderedDict()
+    
+    for k, v in sdict.items():
+        name = k
+        new_state_dict[name] = v
+
+    state.update(new_state_dict)
+    return state, checkpoint["acc"]
