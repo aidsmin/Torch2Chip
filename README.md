@@ -7,24 +7,30 @@ A library of tool for Pytorch-based deep neural network (DNN) compression and th
 ## Outline
 
 - **[Layers](https://github.com/mengjian0502/Torch2Chip/tree/main#layers)**
-  - [Customized quantization method](https://github.com/mengjian0502/Torch2Chip/tree/main#layers)
-    - [QBase](https://github.com/mengjian0502/Torch2Chip/tree/main#qbase-source-code)
-  - [Customized quantization layer](https://github.com/mengjian0502/Torch2Chip/tree/main#customized-quantization-layers)
+  - [Customized quantization method](https://github.com/SeoLabASU/Torch2Chip#customized-quantization-method)
+    - [QBase](https://github.com/SeoLabASU/Torch2Chip#qbase-source-code)
+  - [Customized quantization layer](https://github.com/SeoLabASU/Torch2Chip#customized-quantization-layers)
     - [QBaseConv2d](https://github.com/mengjian0502/Torch2Chip/tree/main#qbaseconv2d-source-code)
-    - [QBaseLinear](https://github.com/mengjian0502/Torch2Chip/tree/main#qbaselinear-source-code)
-- **[Model Training](https://github.com/mengjian0502/Torch2Chip/tree/main#model-training)**
-  - [Base Trainer](https://github.com/mengjian0502/Torch2Chip/tree/main#basetrainer-source-code)
-- **[Post-training model conversion](https://github.com/mengjian0502/Torch2Chip/tree/main#post-training-model-conversion)**
-  - [Quantization scaling](https://github.com/mengjian0502/Torch2Chip/tree/main#quantization-scaling)
-  - [BatchNorm scaling and shifting](https://github.com/mengjian0502/Torch2Chip/tree/main#batchnorm-scaling)
-  - [Fuse the normalization parameters in to scalers and bias](https://github.com/mengjian0502/Torch2Chip/tree/main#fuse-the-normalization-parameters-in-to-scalers-and-bias)
-    - [MulShift](https://github.com/mengjian0502/Torch2Chip/tree/main#mulshift-source-code)
-    - [MulQuant](https://github.com/mengjian0502/Torch2Chip/tree/main#mulquant-source-code)
-    - [LayerFuser](https://github.com/mengjian0502/Torch2Chip/tree/main#layerfuser-source-code)
-    - [XFormerFuser](https://github.com/mengjian0502/Torch2Chip/tree/main#xformerfuser-source-code)
-  - [T2C: Integer-only parameter conversion and parameter extraction](https://github.com/mengjian0502/Torch2Chip/tree/main#t2c-integer-only-parameter-conversion-and-parameter-extraction)
-- **[Notes for transformer](https://github.com/mengjian0502/Torch2Chip/tree/main#notes-for-transformer)**
-- **[Usage and requirements](https://github.com/mengjian0502/Torch2Chip/tree/main#usage-and-requirements)**
+    - [QBaseLinear](https://github.com/SeoLabASU/Torch2Chip#qbaselinear-source-code)
+    - SQBaseConv2d
+- Pruner
+  - Basic Pruner
+  - N:M Pruner
+
+- **[Model Training](https://github.com/SeoLabASU/Torch2Chip#model-training)**
+  - [Base Trainer](https://github.com/SeoLabASU/Torch2Chip#basetrainer-source-code)
+  - SparseTrainer
+- **[Post-training model conversion](https://github.com/SeoLabASU/Torch2Chip#post-training-model-conversion)**
+  - [Quantization scaling](https://github.com/SeoLabASU/Torch2Chip#quantization-scaling)
+  - [BatchNorm scaling and shifting](https://github.com/SeoLabASU/Torch2Chip#batchnorm-scaling)
+  - [Fuse the normalization parameters in to scalers and bias](https://github.com/SeoLabASU/Torch2Chip#fuse-the-normalization-parameters-in-to-scalers-and-bias)
+    - [MulShift](https://github.com/SeoLabASU/Torch2Chip#mulshift-source-code)
+    - [MulQuant](https://github.com/SeoLabASU/Torch2Chip#mulquant-source-code)
+    - [LayerFuser](https://github.com/SeoLabASU/Torch2Chip#layerfuser-source-code)
+    - [XFormerFuser](https://github.com/SeoLabASU/Torch2Chip#xformerfuser-source-code)
+  - [T2C: Integer-only parameter conversion and parameter extraction](https://github.com/SeoLabASU/Torch2Chip#t2c-integer-only-parameter-conversion-and-parameter-extraction)
+- **[Notes for transformer](https://github.com/SeoLabASU/Torch2Chip#notes-for-transformer)**
+- **[Usage and requirements](https://github.com/SeoLabASU/Torch2Chip#usage-and-requirementss)**
 
 ## Layers
 
@@ -36,14 +42,25 @@ This section introduces the customized quantization modules and layers for DNNs 
 
 Basic template for quantization method.
 
-#### QBase ([source code](https://github.com/mengjian0502/Torch2Chip/blob/871de10b7e7f9e2c105af05116489804a213ee24/methods/base.py#L10))
+#### QBase ([source code](https://github.com/SeoLabASU/Torch2Chip/blob/940468c467d350d653f46071cc7de1fce029ba7e/methods/base.py#L10))
 
 The base method for quantization is `QBase`, the user-customized quantization methods should be constructed on top of  `QBase` 
 
 ```python
 class QBase(nn.Module):
-    """
-    Basic quantizer module
+    r"""Base quantization method for weight and activation.
+
+    Args:
+    nbit (int): Data precision.
+    train_flag (bool): Training mode. 
+
+    Attribute:
+    dequantize (bool): Flag for dequantization (int -> descritized float)
+
+    Methods:
+    trainFunc (input:Tensor): Training function of quantization-aware training (QAT)
+    evalFunc (input:Tensor): Forward pass function of inference. 
+    inference(): Switch to inference mode. 
     """
     def __init__(self, nbit:int, train_flag:bool=True):
         super(QBase, self).__init__()
@@ -118,14 +135,21 @@ Regarding the details of the autograd backward pass function, please refer to th
 
 On top of the base quantization method, Torch2Chip provides the layer template for customized quantization-aware-training and inference.
 
-#### QBaseConv2d ([source code](https://github.com/mengjian0502/Torch2Chip/blob/871de10b7e7f9e2c105af05116489804a213ee24/methods/base.py#L54))
+#### QBaseConv2d ([source code](https://github.com/SeoLabASU/Torch2Chip/blob/940468c467d350d653f46071cc7de1fce029ba7e/methods/base.py#L54))
 
 Basic method for low-precision convolution.
 
 ```python
 class QBaseConv2d(nn.Conv2d):
-    """
-    Basic low precision convolutional layer
+    r"""Basic low precision convolutional layer
+
+    Inherited from the base nn.Conv2d layer.
+    
+    Args:
+    wbit (int): Weight quantization precision. 
+    abit (int): Input quantization precision.
+    wq (QBase): Weight quantizer. 
+    aq (QBase): Activation quantizer.
     """
     def __init__(self, in_channels:int, out_channels:int, kernel_size:int, stride:int=1, 
                 padding:int=0, dilation:int=1, groups:int=1, bias:bool=True, wbit:int=32, abit:int=32, train_flag=True):
@@ -141,25 +165,31 @@ class QBaseConv2d(nn.Conv2d):
     
     def inference(self):
         """
-        Inference mode
+        Inference mode.
         """
-        ...
+        self.train_flag = False
+        self.register_buffer("qweight", torch.ones_like(self.weight))
+        self.register_buffer("fm_max", torch.tensor(0.))
 
     def get_fm_info(self, y:Tensor):
-        """
-        Get info of the layer
-        """
-        ...
+        # maximum bit length
+        mb = len(bin(int(y.abs().max().item()))) - 2
+        fm = mb * y.size(2) * y.size(3)
+        
+        # maximum featuremap size
+        if fm > self.fm_max:
+            self.fm_max.data = torch.tensor(fm).float()
 
     def forward(self, input:Tensor):
-      	"""
-      	Forward pass
-	      """
         wq = self.wq(self.weight)
+
         xq = self.aq(input)
         y = F.conv2d(xq, wq, self.bias, self.stride, self.padding, self.dilation, self.groups)
-        
-        ...
+
+        # save integer weights
+        if not self.train_flag:
+            self.qweight.data = wq
+            self.get_fm_info(y)
 
         return y
 ```
@@ -187,15 +217,103 @@ The detailed content of the class methods can be found in the source code.
 
 Similar to `QBaseConv2d`, except the forward operation becomes `torch.nn.functional.linear`. 
 
+```python
+class QBaseLinear(nn.Linear):
+    r"""Basic low precision linear layer
+
+    Inherited from the base nn.Linear layer.
+    
+    Args:
+    wbit (int): Weight quantization precision. 
+    abit (int): Input quantization precision.
+    wq (QBase): Weight quantizer. 
+    aq (QBase): Activation quantizer.
+    """
+    def __init__(self, in_features: int, out_features: int, bias: bool = True, wbit:int=32, abit:int=32, train_flag=True):
+        super(QBaseLinear, self).__init__(in_features, out_features, bias)
+        self.train_flag = train_flag
+        
+        self.wbit = wbit
+        self.abit = abit
+        
+        # quantizer
+        self.wq = nn.Identity()
+        self.aq = nn.Identity()
+    
+    def inference(self):
+        """
+        Inference mode
+        """
+        self.train_flag = False
+    
+    def forward(self, input:Tensor):
+        wq = self.wq(self.weight)
+        xq = self.aq(input)
+        y = F.linear(xq, wq, self.bias)
+        return y
+```
+
+**Class Parameters:**
+
+In addition to the basic parameters/configuration of the Pytorch convolutional layer (`nn.Linear`), `QBaseLinear` requires the following parameters/variables for quantization: 
+
+- `wbit`(*int*): Weight precision
+- `abit`(*int*): Activation/input precision
+- `wq` (*QBase*): Weight quantizer
+  - *Default*: `nn.Identity`
+- `aq` (*QBase*): Input quantizer
+  - *Default:* `nn.Identity`
+
+**Class Methods**:
+
+- `inference`: Activate inference mode for integer-conversion and integer-only-inference.
+- `get_fm_info`: Get info of output feature map, including maximum data precision and feature map size.
+- `forward`: Forward pass of convolutional layer
+
+The detailed content of the class methods can be found in the source code.  
+
+#### SQBaseConv2d (source code)
+
+Low precision convolutional layer with sparse weights. 
+
+```python
+class SQBaseConv2d(QBaseConv2d):
+    def __init__(self, in_channels: int, out_channels: int, kernel_size: int, stride: int = 1, padding: int = 0, 
+                 dilation: int = 1, groups: int = 1, bias: bool = True, wbit: int = 32, abit: int = 32, train_flag=True):
+        super().__init__(in_channels, out_channels, kernel_size, stride, padding, dilation, groups, bias, wbit, abit, train_flag)
+
+        # masks
+        self.register_buffer("mask", torch.ones_like(self.weight))
+    
+    def sparsify(self):
+        return self.weight.mul(self.mask)
+    
+    def forward(self, input: Tensor):
+        # sparsify weight
+        wq = self.sparsify()
+        
+        # quantization
+        wq = self.wq(wq)
+        xq = self.aq(input)
+        
+        y = F.conv2d(xq, wq, self.bias, self.stride, self.padding, self.dilation, self.groups)
+
+        # save integer weights
+        if not self.train_flag:
+            self.qweight.data = wq
+            self.get_fm_info(y)
+        return y
+```
+
+Inheriting from the `QBaseConv2d` method, the weight mask is added as the non-learnable parameter (buffer), which will be updated by the pruner during the training process. 
+
 ------
 
 ## Model Training
 
-------
+#### BaseTrainer ([source code](https://github.com/SeoLabASU/Torch2Chip/blob/940468c467d350d653f46071cc7de1fce029ba7e/trainer/trainer.py#L12))
 
-#### BaseTrainer ([source code](https://github.com/mengjian0502/Torch2Chip/blob/43034a8e558c8b897e4aef2a24eef231bcca39d0/trainer.py#L13))
-
-The model training method is implemented in the `BaseTrainer` module ([source code](https://github.com/mengjian0502/Torch2Chip/blob/main/trainer.py)), where the entire training process has been decomposed into different stages to support the various customizations. 
+The model training method is implemented in the `BaseTrainer` module ([source code](https://github.com/SeoLabASU/Torch2Chip/blob/main/trainer/trainer.py)), where the entire training process has been decomposed into different stages to support the various customizations. 
 
 ```python
 class BaseTrainer(object):
@@ -250,6 +368,32 @@ trainer = BaseTrainer(
     )
 # Step 4: Start DNN training with one-line execution
 trainer.fit()
+```
+
+#### SparseTrainer ([source code](https://github.com/SeoLabASU/Torch2Chip/blob/940468c467d350d653f46071cc7de1fce029ba7e/trainer/strainer.py#L14))
+
+Sparse training / fine-tuning trainer, inherited from the `BaseTrainer` method. 
+
+```python
+class SparseTrainer(BaseTrainer):
+    def __init__(self, model: nn.Module, loss_type: str, trainloader, validloader, args, logger):
+        super(SparseTrainer, self).__init__(model, loss_type, trainloader, validloader, args, logger)
+
+        # pruner
+        self.pruner = PRUNERS[str(self.args.pruner)](self.model, self.trainloader, args=self.args)
+```
+
+Attributes:
+
+- `pruner`: Sparsification method. 
+
+Training step with sparsity increment: `self.pruner.step()`
+
+```python
+def train_step(self, inputs, target):
+    out, loss = super().train_step(inputs, target)
+    self.pruner.step()
+    return out, loss
 ```
 
 ------
@@ -444,7 +588,7 @@ After layer fusion:
 
 The original `BatchNorm2d` and `ReLU` modules are replaced by `nn.Identity()` modules. The post-convolution scaling are performed by the `MulShift` module. 
 
-#### XformerFuser ([source code](https://github.com/mengjian0502/Torch2Chip/blob/871de10b7e7f9e2c105af05116489804a213ee24/t2c/xformer_fuser.py#L11))
+#### XformerFuser ([source code](https://github.com/SeoLabASU/Torch2Chip/blob/b1d449766d3790559d8c924ffa540dc89209e700/t2c/xformer_fuser.py#L11))
 
 ```python
 class XformerFuser(object):
@@ -586,7 +730,7 @@ The original quantization modules are all replaced by `nn.Identity` and the scal
 
 ### T2C: Integer-only parameter conversion and parameter extraction
 
-#### T2C ([source code](https://github.com/mengjian0502/Torch2Chip/blob/94cc93a1ff1524bbcc12087b626ff9f0226729ac/t2c/t2c.py#L14))
+#### T2C ([source code](https://github.com/SeoLabASU/Torch2Chip/blob/940468c467d350d653f46071cc7de1fce029ba7e/t2c/t2c.py#L22))
 
 Extract the weights and scaling parameters of pre-trained model. The model is fused inside `T2C` by using `LayerFuser` or `XformerFuser`
 
@@ -656,10 +800,12 @@ trainer.valid_epoch()
 
 **Experimental results with CIFAR-10 dataset**
 
-| Model | W/A  |  S/b  | SW Baseline | T2C Acc. |
-| :---: | :--: | :---: | :---------: | :------: |
-| ViT7  | 4/4  | 16/16 |    88.54    |  88.49   |
-| VGG7  | 4/4  | 16/16 |    92.55    |  92.51   |
+|   Model   | W/A  |  S/b  | SW Baseline | T2C Acc. |
+| :-------: | :--: | :---: | :---------: | :------: |
+|   ViT7    | 4/4  | 16/16 |    88.54    |  88.49   |
+|   VGG7    | 4/4  | 16/16 |    92.55    |  92.51   |
+| ResNet-20 | 4/4  | 16/16 |    91.43    |  91.31   |
+| ResNet-18 | 4/4  | 16/16 |    94.71    |  94.71   |
 
 ------
 
@@ -708,4 +854,3 @@ python >= 3.7.4
 pytorch >= 1.9.1
 fxpmath = 0.4.5
 ```
-
