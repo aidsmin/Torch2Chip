@@ -13,9 +13,9 @@ A library of tool for Pytorch-based deep neural network (DNN) compression and th
     - [QBaseConv2d](https://github.com/mengjian0502/Torch2Chip/tree/main#qbaseconv2d-source-code)
     - [QBaseLinear](https://github.com/SeoLabASU/Torch2Chip#qbaselinear-source-code)
     - [SQBaseConv2d](https://github.com/SeoLabASU/Torch2Chip#sqbaseconv2d-source-code)
-- Pruners
-  - Basic Pruner
-  - N:M Pruner
+- **[Pruners](https://github.com/SeoLabASU/Torch2Chip#pruners)**
+  - [Basic Pruner](https://github.com/SeoLabASU/Torch2Chip#basic-pruning-class-source-code)
+  - [N:M Pruner](https://github.com/SeoLabASU/Torch2Chip#nm-structured-fine-grained-sparsity-source-code)
 
 - **[Model Training](https://github.com/SeoLabASU/Torch2Chip#model-training)**
   - [Base Trainer](https://github.com/SeoLabASU/Torch2Chip#basetrainer-source-code)
