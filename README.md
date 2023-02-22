@@ -335,10 +335,9 @@ class Pruner(object):
 
 - `prune_rate_step`: Update the pruning ratio based on the following schedule: 
   
-  ```math
-  s_\theta^t = s_\theta^f + (s_\theta^i-s_\theta^f)(1-\frac{t-t_0}{n\Delta t})^3
-  ```
-  
+$$
+s_\theta^t = s_\theta^f + (s_\theta^i-s_\theta^f)(1-\frac{t-t_0}{n\Delta t})^3
+$$
   
   Where $s_\theta^i$ and $s_\theta^f$ are the initial and target sparsity of the model. 
   
@@ -356,15 +355,15 @@ Structured fine-grained sparsity pruner constructed based on `Pruner`:
 
 ```python
 class NMPruner(Pruner):
-		def __init__(self, model: nn.Module, loader=None, args=None, interval=1000):
-        super().__init__(model, loader, args, interval)
-        self.N = args.N
-        self.M = args.M
+  def __init__(self, model: nn.Module, loader=None, args=None, interval=1000):
+    super().__init__(model, loader, args, interval)
+    self.N = args.N
+    self.M = args.M
 
-        assert self.M > self.N, "# of Sparse elements (N) cannot be greater or equal to the group size (M)."
+    assert self.M > self.N, "# of Sparse elements (N) cannot be greater or equal to the group size (M)."
 
-        # input channel our output channel oriented
-        self.nchw = self.args.nchw
+    # input channel our output channel oriented
+    self.nchw = self.args.nchw
 ```
 
 **Class parameters:** 
@@ -445,11 +444,11 @@ Sparse training / fine-tuning trainer, inherited from the `BaseTrainer` method.
 
 ```python
 class SparseTrainer(BaseTrainer):
-    def __init__(self, model: nn.Module, loss_type: str, trainloader, validloader, args, logger):
-        super(SparseTrainer, self).__init__(model, loss_type, trainloader, validloader, args, logger)
+  def __init__(self, model: nn.Module, loss_type: str, trainloader, validloader, args, logger):
+    super(SparseTrainer, self).__init__(model, loss_type, trainloader, validloader, args, logger)
 
-        # pruner
-        self.pruner = PRUNERS[str(self.args.pruner)](self.model, self.trainloader, args=self.args)
+    # pruner
+    self.pruner = PRUNERS[str(self.args.pruner)](self.model, self.trainloader, args=self.args)
 ```
 
 Attributes:
