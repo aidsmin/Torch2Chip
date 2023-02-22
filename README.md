@@ -12,14 +12,14 @@ A library of tool for Pytorch-based deep neural network (DNN) compression and th
   - [Customized quantization layer](https://github.com/SeoLabASU/Torch2Chip#customized-quantization-layers)
     - [QBaseConv2d](https://github.com/mengjian0502/Torch2Chip/tree/main#qbaseconv2d-source-code)
     - [QBaseLinear](https://github.com/SeoLabASU/Torch2Chip#qbaselinear-source-code)
-    - SQBaseConv2d
-- Pruner
+    - [SQBaseConv2d](https://github.com/SeoLabASU/Torch2Chip#sqbaseconv2d-source-code)
+- Pruners
   - Basic Pruner
   - N:M Pruner
 
 - **[Model Training](https://github.com/SeoLabASU/Torch2Chip#model-training)**
   - [Base Trainer](https://github.com/SeoLabASU/Torch2Chip#basetrainer-source-code)
-  - SparseTrainer
+  - [SparseTrainer](https://github.com/SeoLabASU/Torch2Chip#sparsetrainer-source-code)
 - **[Post-training model conversion](https://github.com/SeoLabASU/Torch2Chip#post-training-model-conversion)**
   - [Quantization scaling](https://github.com/SeoLabASU/Torch2Chip#quantization-scaling)
   - [BatchNorm scaling and shifting](https://github.com/SeoLabASU/Torch2Chip#batchnorm-scaling)
@@ -126,6 +126,7 @@ This library provides two example quantizers as the references:
 
 - Weight quantization: `SAWB` ([**paper**](https://mlsys.org/Conferences/2019/doc/2019/168.pdf)) ([**code**](https://github.com/mengjian0502/Torch2Chip/blob/75c3f4a8a7eb2ff701583f2e277654efde485c29/methods/qlayer.py#L14))
 - Activation quantization: `RCF` ([**paper**](https://openreview.net/pdf?id=BkgXT24tDS)) ([**code**](https://github.com/mengjian0502/Torch2Chip/blob/75c3f4a8a7eb2ff701583f2e277654efde485c29/methods/qlayer.py#L67))
+- Activation quantization: `PACT` (paper) (code)
 
 Regarding the details of the autograd backward pass function, please refer to the official Pytorch documentation ([link](https://pytorch.org/docs/stable/autograd.html#torch.autograd.Function)).
 
@@ -308,6 +309,71 @@ class SQBaseConv2d(QBaseConv2d):
 Inheriting from the `QBaseConv2d` method, the weight mask is added as the non-learnable parameter (buffer), which will be updated by the pruner during the training process. 
 
 ------
+
+## Pruners
+
+#### Basic Pruning Class ([source code](https://github.com/SeoLabASU/Torch2Chip/blob/166edd58741c6774b23ab1bd3477357ac4fcb685/pruner/base.py#L8))
+
+The basic sparsification method is defined as the `Pruner`, which applies the fundamental magnitude-based score pruning:
+
+```python
+class Pruner(object):
+		def __init__(self, model:nn.Module, loader=None, args=None, interval=1000):
+```
+
+**Class parameters:** 
+
+- `model (torch.nn.Module)`: DNN model.
+- `loader`: Data loader of the training process.
+- `args`: Argparse argument.
+- `interval`: Sparsity updating schedule.
+- `pr`: Current pruning rate. 
+
+**Methods:**
+
+- `sparsity`: Return the overall element-wise sparsity. 
+
+- `prune_rate_step`: Update the pruning ratio based on the following schedule: 
+  $$
+  s_\theta^t = s_\theta^f + (s_\theta^i-s_\theta^f)(1-\frac{t-t_0}{n\Delta t})^3
+  $$
+  Where $s_\theta^i$ and $s_\theta^f$ are the initial and target sparsity of the model. 
+
+- `reg_masks`: Fetch the masks from the `SQBaseConv2d` layers. 
+
+- `collect_score`: Fetch the layer-wise magnitude score. 
+
+- `apply_masks`: Update the masks to the `SQBaseConv2d`. 
+
+- `step`: Perform a single pruning step. 
+
+#### N:M Structured Fine-grained Sparsity ([source code](https://github.com/SeoLabASU/Torch2Chip/blob/166edd58741c6774b23ab1bd3477357ac4fcb685/pruner/nm.py#L12))
+
+Structured fine-grained sparsity pruner constructed based on `Pruner`: 
+
+```python
+class NMPruner(Pruner):
+		def __init__(self, model: nn.Module, loader=None, args=None, interval=1000):
+        super().__init__(model, loader, args, interval)
+        self.N = args.N
+        self.M = args.M
+
+        assert self.M > self.N, "# of Sparse elements (N) cannot be greater or equal to the group size (M)."
+
+        # input channel our output channel oriented
+        self.nchw = self.args.nchw
+```
+
+**Class parameters:** 
+
+- `model (torch.nn.Module)`: DNN model.
+- `loader`: Data loader of the training process.
+- `args`: Argparse argument.
+- `interval`: Sparsity updating schedule.
+- `pr`: Current pruning rate. 
+- `M (int)`: Size of sparse groups (divisible by 4).
+- `N (int)`: Number of sparse elements inside.
+- `nchw`: Flag of exploiting sparsity along the input channel (`nchw = False` => Exploiting sparsity along the output channel).
 
 ## Model Training
 
@@ -815,42 +881,10 @@ For the Beta version, the transformer-based implementation is currently availabl
 
 ## Usage and Requirements
 
-The training and inference scripts `.sh` are all available in the `bash_files` folder of each branch. Execute the corresponding `.sh` file for training, fine-tuning, and inference. **For each script file, please specify your Python path before running the script.**
-
-**CNN Training**
+Install the Anaconda Environment with the `t2c.yml` file:
 
 ```bash
-bash qtrain.sh
+conda env create -f t2c.yml
 ```
 
-**CNN Inference**
-
-```sh
-bash inference.sh
-```
-
-**Transformer Training** 
-
-```bash
-bash vit_train.sh
-```
-
-**Transformer Fine-tuning**
-
-```bash
-bash vit_finetune.sh
-```
-
-**Transformer Inference**
-
-```bash
-bash vit_inference.sh
-```
-
-### Requirements
-
-```markdown
-python >= 3.7.4
-pytorch >= 1.9.1
-fxpmath = 0.4.5
-```
+Execute the corresponding `.sh` file inside the `bash_file` folder. 
