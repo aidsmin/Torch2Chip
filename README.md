@@ -273,7 +273,7 @@ In addition to the basic parameters/configuration of the Pytorch convolutional l
 
 The detailed content of the class methods can be found in the source code.  
 
-#### SQBaseConv2d (source code)
+#### SQBaseConv2d ([source code](https://github.com/SeoLabASU/Torch2Chip/blob/75adc21b79d4fe8d709f35b04c2a82dc5be12f35/methods/sqlayer.py#L33))
 
 Low precision convolutional layer with sparse weights. 
 
@@ -335,10 +335,9 @@ class Pruner(object):
 
 - `prune_rate_step`: Update the pruning ratio based on the following schedule: 
   
-  
-  $$
+  ```math
   s_\theta^t = s_\theta^f + (s_\theta^i-s_\theta^f)(1-\frac{t-t_0}{n\Delta t})^3
-  $$
+  ```
   
   
   Where $s_\theta^i$ and $s_\theta^f$ are the initial and target sparsity of the model. 
@@ -870,12 +869,14 @@ trainer.valid_epoch()
 
 **Experimental results with CIFAR-10 dataset**
 
-|   Model   | W/A  |  S/b  | SW Baseline | T2C Acc. |
-| :-------: | :--: | :---: | :---------: | :------: |
-|   ViT7    | 4/4  | 16/16 |    88.54    |  88.49   |
-|   VGG7    | 4/4  | 16/16 |    92.55    |  92.51   |
-| ResNet-20 | 4/4  | 16/16 |    91.43    |  91.31   |
-| ResNet-18 | 4/4  | 16/16 |    94.71    |  94.71   |
+|   Model    | W/A  |  S/b  | SW Baseline | T2C Acc. |
+| :--------: | :--: | :---: | :---------: | :------: |
+|    ViT7    | 4/4  | 16/16 |    88.54    |  88.49   |
+|    VGG7    | 4/4  | 16/16 |    92.55    |  92.51   |
+| ResNet-20  | 4/4  | 16/16 |    91.43    |  91.31   |
+| ResNet-18* | 4/4  | 16/16 |    94.74    |  94.71   |
+
+*: The N:M=2:4 sparsity is exploited inside the weights. 
 
 ------
 
