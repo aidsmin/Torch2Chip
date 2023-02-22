@@ -326,7 +326,7 @@ class Pruner(object):
 - `model (torch.nn.Module)`: DNN model.
 - `loader`: Data loader of the training process.
 - `args`: Argparse argument.
-- `interval`: Sparsity updating schedule.
+- `interval`: Sparsity updating frequency (Default 1,000 iterations).
 - `pr`: Current pruning rate. 
 
 **Methods:**
@@ -334,11 +334,15 @@ class Pruner(object):
 - `sparsity`: Return the overall element-wise sparsity. 
 
 - `prune_rate_step`: Update the pruning ratio based on the following schedule: 
+  
+  
   $$
   s_\theta^t = s_\theta^f + (s_\theta^i-s_\theta^f)(1-\frac{t-t_0}{n\Delta t})^3
   $$
+  
+  
   Where $s_\theta^i$ and $s_\theta^f$ are the initial and target sparsity of the model. 
-
+  
 - `reg_masks`: Fetch the masks from the `SQBaseConv2d` layers. 
 
 - `collect_score`: Fetch the layer-wise magnitude score. 
