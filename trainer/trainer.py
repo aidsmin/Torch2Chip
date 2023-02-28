@@ -48,14 +48,11 @@ class BaseTrainer(object):
             self.lr_scheduler = torch.optim.lr_scheduler.MultiStepLR(self.optimizer, milestones=self.args.schedule, last_epoch=-1)
         elif args.lr_sch == "cos":
             self.lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(self.optimizer, T_max=self.args.epochs, eta_min=1e-5)
-        
+
         # cuda
-        if args.use_cuda:
+        if args.use_cuda and not args.ddp:
             self.model = self.model.cuda()
-            if args.ngpu > 1:
-                self.model = nn.DataParallel(model)
-                print("Data parallel!")
-        
+
         if self.args.mixed_prec:
             self.scaler = torch.cuda.amp.GradScaler()
         else:

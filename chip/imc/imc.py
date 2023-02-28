@@ -1,4 +1,0 @@
-"""
-IMC Base modules
-"""
-

@@ -92,3 +92,16 @@ def load_checkpoint(ckpt, state):
 
     state.update(new_state_dict)
     return state, checkpoint["acc"]
+
+def load_ddp_checkpoint(ckpt, state):
+    checkpoint = torch.load(ckpt)
+    sdict = checkpoint['state_dict']
+
+    new_state_dict = OrderedDict()
+    
+    for k, v in sdict.items():
+        name = k[7:]
+        new_state_dict[name] = v
+
+    state.update(new_state_dict)
+    return state, checkpoint["acc"]
