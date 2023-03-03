@@ -20,7 +20,7 @@ save_path="/home/mengjian/Desktop/ASU_research/Torch2Chip/save/cifar10/resnet20_
 pretrained_model="/home/mengjian/Desktop/ASU_research/Torch2Chip/save/cifar10/resnet20_Q/resnet20_Q_w4_a4_lr0.1_batch128_cross_entropyloss/model_best.pth.tar"
 log_file="training.log"
 
-$PYTHON -W ignore ./main.py \
+python -W ignore ./main.py \
     --save_path ${save_path} \
     --model ${model} \
     --epochs ${epochs} \
@@ -34,4 +34,5 @@ $PYTHON -W ignore ./main.py \
     --fine_tune \
     --resume ${pretrained_model} \
     --ngpu 1 \
+    --ltype "q" \
     --evaluate;

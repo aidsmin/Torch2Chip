@@ -5,7 +5,13 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn import init
-from methods import QConv2d
+from methods import QConv2d, NMConv2d
+
+# layer types
+CONV = {
+    "q": QConv2d,
+    "nm": NMConv2d,
+}
 
 class DownsampleA(nn.Module):
     def __init__(self, nIn, nOut, stride):
@@ -36,17 +42,17 @@ class LambdaLayer(nn.Module):
 class BasicBlock(nn.Module):
     expansion = 1
 
-    def __init__(self, in_planes, planes, stride=1, option='B', wbit=32, abit=32):
+    def __init__(self, in_planes, planes, stride=1, option='B', wbit=32, abit=32, ltype:str="q"):
         super(BasicBlock, self).__init__()
         if wbit < 32:
-            self.conv1 = QConv2d(in_planes, planes, kernel_size=3, stride=stride, padding=1, bias=False, wbit=wbit, abit=abit)
+            self.conv1 = CONV[ltype](in_planes, planes, kernel_size=3, stride=stride, padding=1, bias=False, wbit=wbit, abit=abit)
         else:
             self.conv1 = nn.Conv2d(in_planes, planes, kernel_size=3, stride=stride, padding=1, bias=False)
         self.bn1 = nn.BatchNorm2d(planes)
         self.relu1 = nn.ReLU()
 
         if wbit < 32:
-            self.conv2 = QConv2d(planes, planes, kernel_size=3, stride=1, padding=1, bias=False, wbit=wbit, abit=abit)
+            self.conv2 = CONV[ltype](planes, planes, kernel_size=3, stride=1, padding=1, bias=False, wbit=wbit, abit=abit)
         else:
             self.conv2 = nn.Conv2d(planes, planes, kernel_size=3, stride=1, padding=1, bias=False)
         self.bn2 = nn.BatchNorm2d(planes)
@@ -61,10 +67,16 @@ class BasicBlock(nn.Module):
                 self.shortcut = LambdaLayer(lambda x:
                                             F.pad(x[:, :, ::2, ::2], (0, 0, 0, 0, planes//4, planes//4), "constant", 0))
             elif option == 'B':
-                self.shortcut = nn.Sequential(
-                    QConv2d(in_planes, self.expansion * planes, kernel_size=1, stride=stride, bias=False, wbit=wbit, abit=abit),
-                    nn.BatchNorm2d(self.expansion * planes)
-                )
+                if wbit < 32:
+                    self.shortcut = nn.Sequential(
+                        CONV[ltype](in_planes, self.expansion * planes, kernel_size=1, stride=stride, bias=False, wbit=wbit, abit=abit),
+                        nn.BatchNorm2d(self.expansion * planes)
+                    )
+                else:
+                    self.shortcut = nn.Sequential(
+                        nn.Conv2d(in_planes, self.expansion * planes, kernel_size=1, stride=stride, bias=False),
+                        nn.BatchNorm2d(self.expansion * planes)
+                    )
 
     def forward(self, x):
         out = self.relu1(self.bn1(self.conv1(x)))
@@ -75,24 +87,24 @@ class BasicBlock(nn.Module):
 
 
 class ResNet(nn.Module):
-    def __init__(self, block, num_blocks, num_classes=10, wbit=32, abit=32):
+    def __init__(self, block, num_blocks, num_classes=10, wbit=32, abit=32, ltype:str="q"):
         super(ResNet, self).__init__()
         self.in_planes = 16
 
         self.conv1 = nn.Conv2d(3, 16, kernel_size=3, stride=1, padding=1, bias=False)
         self.bn1 = nn.BatchNorm2d(16)
-        self.layer1 = self._make_layer(block, 16, num_blocks[0], stride=1, wbit=wbit, abit=abit)
-        self.layer2 = self._make_layer(block, 32, num_blocks[1], stride=2, wbit=wbit, abit=abit)
-        self.layer3 = self._make_layer(block, 64, num_blocks[2], stride=2, wbit=wbit, abit=abit)
+        self.layer1 = self._make_layer(block, 16, num_blocks[0], stride=1, wbit=wbit, abit=abit, ltype=ltype)
+        self.layer2 = self._make_layer(block, 32, num_blocks[1], stride=2, wbit=wbit, abit=abit, ltype=ltype)
+        self.layer3 = self._make_layer(block, 64, num_blocks[2], stride=2, wbit=wbit, abit=abit, ltype=ltype)
         self.linear = nn.Linear(64, num_classes)
 
         self.apply(_weights_init)
 
-    def _make_layer(self, block, planes, num_blocks, stride, wbit=32, abit=32):
+    def _make_layer(self, block, planes, num_blocks, stride, wbit=32, abit=32, ltype:str="q"):
         strides = [stride] + [1]*(num_blocks-1)
         layers = []
         for stride in strides:
-            layers.append(block(self.in_planes, planes, stride, wbit=wbit, abit=abit))
+            layers.append(block(self.in_planes, planes, stride, wbit=wbit, abit=abit, ltype=ltype))
             self.in_planes = planes * block.expansion
 
         return nn.Sequential(*layers)
