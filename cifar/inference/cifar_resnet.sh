@@ -1,4 +1,3 @@
-PYTHON="/home/mengjian/anaconda3/envs/myenv/bin/python"
 
 if [ ! -d "$DIRECTORY" ]; then
     mkdir ../save

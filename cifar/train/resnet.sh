@@ -1,4 +1,3 @@
-PYTHON="/home/jmeng15/anaconda3/envs/myenv/bin/python"
 
 save_path="./save/${dataset}/${model}/${model}_w${wbit}_a${abit}_lr${lr}_batch${batch_size}_${loss}loss/"
 

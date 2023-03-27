@@ -1,4 +1,3 @@
-PYTHON="/home2/jmeng15/anaconda3/envs/myenv/bin/python"
 
 if [ ! -d "$DIRECTORY" ]; then
     mkdir ../save
@@ -20,7 +19,7 @@ save_path="/home2/jmeng15/Torch2Chip/save/cifar10/prune/resnet18_cifar/resnet18_
 pretrained_model="/home2/jmeng15/Torch2Chip/save/cifar10/prune/resnet18_cifar/resnet18_cifar_w4_a4_lr0.01_batch128_cross_entropyloss/model_best.pth.tar"
 log_file="training.log"
 
-$PYTHON -W ignore ./main.py \
+python -W ignore ./main.py \
     --save_path ${save_path} \
     --model ${model} \
     --epochs ${epochs} \

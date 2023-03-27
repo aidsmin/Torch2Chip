@@ -1,4 +1,3 @@
-PYTHON="/home/mengjian/anaconda3/envs/myenv/bin/python"
 
 if [ ! -d "$DIRECTORY" ]; then
     mkdir ../save
@@ -20,7 +19,7 @@ save_path="../save/cifar10/mobilenetv1_Q/mobilenetv1_Q_w32_a32_lr0.05_batch128_c
 pretrained_model="../save/cifar10/mobilenetv1_Q/mobilenetv1_Q_w32_a32_lr0.05_batch128_cross_entropyloss/model_best.pth.tar"
 log_file="training.log"
 
-$PYTHON -W ignore ../ptq.py \
+python -W ignore ../ptq.py \
     --save_path ${save_path} \
     --model ${model} \
     --epochs ${epochs} \

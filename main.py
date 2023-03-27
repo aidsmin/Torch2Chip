@@ -77,6 +77,12 @@ parser.add_argument("--mixed_prec", type=str2bool, nargs='?', const=True, defaul
 # trainer
 parser.add_argument('--trainer', type=str, default='base', help='trainer type')
 
+# ddp
+parser.add_argument("--ddp", type=str2bool, nargs='?', const=True, default=False, help="enable DDP")
+parser.add_argument('--seed', type=int, default=0, help='use random seed to make sure all the processes has the same model')
+parser.add_argument("--local_rank", type=int, help="Local rank [required]")
+
+
 args = parser.parse_args()
 
 os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
